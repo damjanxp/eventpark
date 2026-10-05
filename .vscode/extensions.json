@@ -1,0 +1,9 @@
+{
+  "recommendations": [
+    "ms-python.python",
+    "charliermarsh.ruff",
+    "ms-azuretools.vscode-containers",
+    "hashicorp.terraform",
+    "dbaeumer.vscode-eslint"
+  ]
+}
