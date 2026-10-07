@@ -1,0 +1,95 @@
+# Local EventPark stack. Start:  docker compose up -d     Stop:  docker compose down   (add -v to wipe data)
+#
+# Compose puts every service on one private network ("eventpark_default") with built-in DNS:
+# containers reach each other by service name (postgres:5432, valkey:6379, ...).
+# `ports:` additionally publishes a port on YOUR machine so host tools (uv run, a DB GUI, the browser)
+# can reach it. "127.0.0.1:" in front means "only from this machine", not from other devices on your network.
+#
+# Values like ${POSTGRES_PASSWORD} come from the repo-root .env (copy .env.example).
+
+name: eventpark
+
+services:
+  postgres:
+    # Pinned version, same major as RDS on AWS (Phase 11).
+    image: postgres:17.11
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+    ports:
+      # HOST:CONTAINER. Inside the Compose network Postgres is always postgres:5432; on your machine it's
+      # localhost:${POSTGRES_HOST_PORT} (5433 by default, because a Windows Postgres service often holds 5432).
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data  # named volume: survives `down`, deleted by `down -v`
+    healthcheck:
+      # $$ = a literal $ for the shell inside the container (Compose would otherwise substitute it).
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  valkey:
+    # Redis-compatible; ElastiCache runs Valkey on AWS.
+    image: valkey/valkey:8.1.10-alpine
+    # No persistence on purpose: Redis only holds data we can rebuild from Postgres (CLAUDE.md §3).
+    command: ["valkey-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  elasticmq:
+    # SQS emulator. Queues + DLQs are created at startup from the config file.
+    # Messages live in memory: a restart empties the queues (fine locally; real SQS is durable).
+    image: softwaremill/elasticmq-native:1.7.1
+    volumes:
+      - ./docker/elasticmq/elasticmq.conf:/opt/elasticmq.conf:ro
+    ports:
+      - "127.0.0.1:9324:9324"  # SQS API (no web UI: since 1.7 that's a separate image we don't need yet)
+    healthcheck:
+      # Ready = the SQS API answers. ListQueues is the cheapest real SQS call.
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9324/?Action=ListQueues"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  seaweedfs:
+    # S3 emulator. `server -s3` runs all SeaweedFS parts in one container plus an S3-compatible gateway.
+    image: chrislusf/seaweedfs:4.48
+    command:
+      - server
+      - -dir=/data
+      - -s3
+      - -s3.config=/etc/seaweedfs/s3.json  # access keys the S3 gateway accepts (dummy, local only)
+      - -master.volumeSizeLimitMB=1024
+    volumes:
+      - seaweedfs-data:/data
+      - ./docker/seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
+    ports:
+      - "127.0.0.1:8333:8333"  # S3 API
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8333/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 20  # SeaweedFS starts several internal servers; give it a bit longer
+
+  mailpit:
+    # Fake SMTP server: catches every email the app sends. Inbox UI: http://localhost:8025
+    image: axllent/mailpit:v1.31.4
+    ports:
+      - "127.0.0.1:8025:8025"  # web UI
+      - "127.0.0.1:1025:1025"  # SMTP
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres-data:
+  seaweedfs-data:

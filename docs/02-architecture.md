@@ -628,9 +628,9 @@ All config comes from environment variables, read by `pydantic-settings`:
 
 | Service | Image / build | Ports (host) |
 |---|---|---|
-| postgres | `postgres:17` | 5432 |
+| postgres | `postgres:17` | 5433 (→ 5432 inside; avoids a host-installed Postgres) |
 | valkey | `valkey/valkey:8` | 6379 |
-| elasticmq | `softwaremill/elasticmq-native` (queues + DLQs from `elasticmq.conf`) | 9324, 9325 (UI) |
+| elasticmq | `softwaremill/elasticmq-native` (queues + DLQs from `elasticmq.conf`) | 9324 (UI is a separate image since 1.7; not used) |
 | seaweedfs | `chrislusf/seaweedfs` (`server -s3`) | 8333 |
 | mailpit | `axllent/mailpit` | 8025 (UI), 1025 (SMTP) |
 | api | `./backend` (uvicorn, reload) | 8000 |

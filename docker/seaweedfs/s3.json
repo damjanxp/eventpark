@@ -1,0 +1,14 @@
+{
+  "identities": [
+    {
+      "name": "eventpark-local",
+      "credentials": [
+        {
+          "accessKey": "eventpark-local",
+          "secretKey": "eventpark-local-secret"
+        }
+      ],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}

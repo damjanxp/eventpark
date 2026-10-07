@@ -102,6 +102,7 @@ How to work with him:
 ├── CLAUDE.md / AGENTS.md      # agent instructions (this file)
 ├── README.md                  # portfolio-facing overview
 ├── docker-compose.yml         # full local stack
+├── docker/                    # config files mounted into local emulators (elasticmq.conf, seaweedfs s3.json)
 ├── .env.example
 ├── backend/                   # Python package `eventpark` (API + workers + outbox relay)
 │   ├── src/eventpark/
@@ -155,7 +156,9 @@ docker compose up -d            # start infra + services
 docker compose logs -f api
 # backend
 cd backend && uv sync
-uv run pytest                   # all tests
+uv run pytest                   # all tests (integration tests start containers: needs Docker)
+uv run pytest -m "not integration"   # fast tests only, no Docker
+uv run --env-file ../.env uvicorn eventpark.app:create_app --factory --reload   # API on the host
 uv run ruff check . && uv run ruff format --check . && uv run mypy src
 uv run alembic upgrade head
 # frontend
