@@ -13,8 +13,10 @@ from fastapi import FastAPI
 
 from eventpark.api import health
 from eventpark.api.middleware import RequestIdMiddleware
+from eventpark.cache.client import create_redis
 from eventpark.core.config import Settings, get_settings
 from eventpark.core.logging import configure_logging
+from eventpark.db.engine import create_engine
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -23,11 +25,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     log = structlog.get_logger()
 
     @asynccontextmanager
-    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-        # Startup: later this opens the DB engine and Redis pool.
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        # Startup: create the connection pools once per process (they connect lazily, on first use,
+        # so the API starts even if Postgres is still booting; /readyz reports that).
+        app.state.engine = create_engine(settings)
+        app.state.redis = create_redis(settings)
         log.info("app.started")
         yield
-        # Shutdown: later this closes them, so connections aren't left hanging.
+        # Shutdown: close the pools so Postgres/Redis don't keep half-open connections.
+        await app.state.redis.aclose()
+        await app.state.engine.dispose()
         log.info("app.stopped")
 
     app = FastAPI(title="EventPark API", version="0.1.0", lifespan=lifespan)

@@ -8,8 +8,11 @@ authors = [
 ]
 requires-python = ">=3.13"
 dependencies = [
+    "asyncpg>=0.32.0",
     "fastapi>=0.142.2",
     "pydantic-settings>=2.15.0",
+    "redis>=8.1.0",
+    "sqlalchemy[asyncio]>=2.1.4",
     "structlog>=26.1.0",
     "uvicorn[standard]>=0.54.0",
 ]
@@ -20,11 +23,13 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "asgi-lifespan>=2.1.0",
     "httpx>=0.28.1",
     "mypy>=2.4.0",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "ruff>=0.16.10",
+    "testcontainers>=4.15.0",
 ]
 
 [tool.ruff]
@@ -41,6 +46,7 @@ select = ["E", "F", "I", "B", "UP", "ASYNC", "S", "RUF"]
 
 [tool.mypy]
 python_version = "3.13"
+plugins = ["pydantic.mypy"]
 mypy_path = "src"
 packages = ["eventpark"]
 disallow_untyped_defs = true
@@ -54,5 +60,9 @@ strict = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "integration: needs Docker (starts real Postgres/Redis containers)",
+    "redis_down: test_readyz only: point Redis at a closed port",
+]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"

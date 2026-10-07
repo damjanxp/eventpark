@@ -14,20 +14,21 @@ These tests only look at HTTP behaviour and log output, not at how the middlewar
 import io
 import json
 import logging
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import Iterator
 
 import pytest
 import structlog
 from fastapi import FastAPI
-from httpx import ASGITransport, AsyncClient
+from httpx import AsyncClient
 
 from eventpark.app import create_app
 from eventpark.core.config import Settings
 
 
 @pytest.fixture
-def app() -> FastAPI:
-    app = create_app(Settings(log_format="json", log_level="INFO"))
+def app(settings: Settings) -> FastAPI:
+    """Overrides the app fixture from conftest.py: same app plus one test-only route."""
+    app = create_app(settings)
 
     # A test-only route that writes one log line, so we can check that it carries the request_id.
     @app.get("/_test/log")
@@ -36,12 +37,6 @@ def app() -> FastAPI:
         return {"ok": "yes"}
 
     return app
-
-
-@pytest.fixture
-async def client(app: FastAPI) -> AsyncIterator[AsyncClient]:
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        yield client
 
 
 @pytest.fixture
