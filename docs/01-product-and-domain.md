@@ -88,7 +88,8 @@ Venue "Belgrade Arena Grounds" (timezone Europe/Belgrade)
 - **Device**: the controller at a gate (your Raspberry Pi). It has a QR/barcode **scanner**, a ticket
   **printer** (entry lanes), a **barrier**, a **loop detector** (senses the car), and a **card
   terminal** (exit lanes). It authenticates with its own API key, sends **heartbeats**, and is shown as
-  online/offline on the dashboard.
+  online/offline on the dashboard. Entry devices also report their **printer status** (`OK`, `PAPER_LOW`,
+  `PAPER_OUT`) in the heartbeat; paper is refilled by staff.
 
 ---
 
@@ -191,7 +192,9 @@ not create a second passage.
 ### Gate flows (step by step)
 
 **A. Entry with pre-booked QR**
-1. Car arrives → loop detector → device wakes up, display: "Scan your ticket or press for ticket".
+1. Car arrives on the **arming loop** (the loop in front of the barrier) → device wakes up, display: "Scan your
+   ticket or press for ticket". The scanner and the ticket button only work **while a vehicle is on the arming
+   loop**; without one, input is ignored locally (a pedestrian can't pull tickets) and the server is never asked.
 2. Driver scans QR → device sends `scan_id` + `ticket_code` to `POST /gate/v1/entry/scan`.
 3. Server checks (one transaction): ticket exists → belongs to this event → event is `LIVE` →
    ticket is `VALID` (anti-passback) → (pre-booked capacity was guaranteed at booking).
@@ -201,12 +204,16 @@ not create a second passage.
 6. Server: passage `COMPLETED`, ticket `INSIDE`, records entry time. Outbox event `passage.completed`.
 
 **B. Entry with drive-up ticket**
-1. Car arrives, driver presses the ticket button → `POST /gate/v1/entry/issue` with `request_id`.
+1. Car on the arming loop, driver presses the ticket button → `POST /gate/v1/entry/issue` with `request_id`.
+   If the printer reports `PAPER_OUT`, the device refuses locally ("No tickets, please use another lane");
+   pre-booked QR scans still work.
 2. Server (one transaction): event `LIVE` → **automatically pick a zone** with free drive-up capacity
    (by zone priority) and atomically take one place → create ticket (`DRIVE_UP`, `ENTERING`) +
    passage `AUTHORIZED` → reply `OPEN` + print payload (ticket code, zone, entry time).
    If no zone has room → `DENY` ("Car park full").
-3. Device prints ticket, opens barrier, and completes the passage as above.
+3. Device prints the ticket. The barrier opens **only when the driver pulls the ticket out of the slot**
+   (ticket-taken sensor), then the passage completes as above. If the ticket is never taken, the passage expires
+   after 60 s like any other hold (ticket `VOID`, place released).
 
 **C. Exit with pre-booked QR**
 1. Driver scans QR at exit → `POST /gate/v1/exit/scan`.
@@ -236,9 +243,18 @@ exit gate). Every rejection is stored as a `REJECTED` passage for statistics.
 **F. Operator actions** (operator console, audited with user + reason)
 - **Manual open**: opens a barrier remotely. The device receives the command on its next poll (or via
   the device command channel, see architecture). Creates an audit log entry and a passage marked `manual`.
+  At an **exit lane with a fee due** (card declined, terminal not responding, a queue building up) staff
+  usually just let the car out to keep the lane moving: the passage is `manual`, the ticket becomes `EXITED`,
+  and the unpaid `amount_due_minor` is recorded as **released unpaid** (see §10).
 - **Lost ticket**: operator finds the ticket (by plate if known, or by entry gate + time) or creates
   a lost-ticket exit; charges the **lost-ticket fee** at the lane; the ticket becomes `VOID`, the car exits.
 - **Void ticket**: cancels a ticket (e.g. fraud); releases capacity if it was holding any.
+
+**G. Safety loop and tailgating**
+The loop after the barrier closes it once the car has passed. If another vehicle is detected under the barrier,
+it stops closing so it can't hit the car (the barrier hardware handles this). **Tailgating** (a second car slipping
+through on one opening) is **not detected**: like real installations, we rely on drivers behaving. Accepted
+limitation: that car has no ticket, so occupancy undercounts by one.
 
 ---
 
@@ -350,6 +366,7 @@ All "per hour" values are in the **venue timezone**, bucketed by hour of passage
 | **Vehicles currently inside** | list of `INSIDE` tickets with entry time, zone, gate, type, plate if known | Postgres (paginated) |
 | **Entries / exits per hour** | count of `COMPLETED` passages per direction per hour, per gate and total | `hourly_stats` (built by workers) |
 | **Revenue** | sum of `SUCCEEDED` payments by kind, per hour and total | `hourly_stats` + payments |
+| **Released unpaid** | sum of `amount_due_minor` on `manual` exit passages without a succeeded payment | `hourly_stats` + passages |
 | **Gate activity** | per gate: passages last 15 min, rejections by reason, avg decision latency, device online/offline, last heartbeat | `hourly_stats` + device heartbeats |
 | **Historical statistics** | per past event: peak occupancy, total entries, revenue, avg stay duration, busiest hour, rejection rate | `event_summaries` (computed at archive) |
 
@@ -377,6 +394,7 @@ The dashboard updates **live** (WebSocket) for occupancy, gate activity and new 
 | Booking expired | driver | email |
 | Zone ≥ 90% full / car park full | staff | dashboard alert (WebSocket) + log/metric |
 | Gate device offline > 60 s | operators | dashboard alert + CloudWatch alarm |
+| Printer `PAPER_LOW` / `PAPER_OUT` | operators | dashboard alert |
 | Report ready | requester | dashboard notification |
 
 ---

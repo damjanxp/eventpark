@@ -245,7 +245,7 @@ spaces(id, zone_id FK, label, kind, UNIQUE(zone_id, label))
 gates(id, venue_id FK, code, name, direction ENTRY|EXIT, has_printer bool, has_terminal bool,
       UNIQUE(venue_id, code))
 devices(id, gate_id FK UNIQUE, name, api_key_hash, api_key_prefix, status ONLINE|OFFLINE|DISABLED,
-        last_heartbeat_at, firmware_version, last_seen_ip)
+        last_heartbeat_at, firmware_version, last_seen_ip, printer_status OK|PAPER_LOW|PAPER_OUT NULL)
 device_commands(id, device_id FK, command OPEN_BARRIER|REBOOT|..., requested_by FK users,
                 reason, created_at, delivered_at, acked_at)
 ```
@@ -491,14 +491,17 @@ IDLE ─car on loop─▶ WAITING_FOR_INPUT ─scan/button─▶ REQUESTING ─O
                          │                               │                    │
                          └─car left─▶ IDLE              DENY─▶ SHOW_MESSAGE    └─timeout 30s, no car─▶ ABORTING ─▶ IDLE
 ```
-Exit lane adds `AWAITING_PAYMENT ─card─▶ CHARGING`.
+Drive-up issue adds `REQUESTING ─OPEN─▶ PRINTING ─ticket taken─▶ BARRIER_OPEN`: the barrier opens only when the
+driver pulls the ticket out of the slot. Scanner and button input is ignored outside `WAITING_FOR_INPUT` (no car on
+the arming loop, no ticket). Exit lane adds `AWAITING_PAYMENT ─card─▶ CHARGING`.
 
 Rules the device follows:
 - Generates a **UUID per scan/press/payment** and reuses it for every retry of that action.
 - Request timeout 2 s; up to 3 retries with backoff `0.2s·2^n ± jitter`; then shows "Please call
   operator" and keeps the action ID so a later retry is still safe.
 - Never opens the barrier without an `OPEN` decision (fail closed), except a manual-open command.
-- Heartbeat every 5 s; the server marks the device offline after 60 s of silence.
+- Heartbeat every 5 s, including printer status; the server marks the device offline after 60 s of silence.
+- With `PAPER_OUT` the ticket button shows "No tickets, please use another lane" without asking the server.
 
 ---
 

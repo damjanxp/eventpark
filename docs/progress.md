@@ -1,11 +1,11 @@
 # Progress
 
-**Active phase:** Phase 0 — Foundations & a safe AWS account
+**Active phase:** Phase 1 — Local walking skeleton + CI
 **AWS dev environment:** ⛔ down   *(update whenever you run aws-up / aws-down)*
 
 | # | Phase | Est. days | Status | Journal | Notes |
 |---|---|---|---|---|---|
-| 0 | Foundations & safe AWS account | 1 | 🟨 | [phase-00](journal/phase-00.md) | |
+| 0 | Foundations & safe AWS account | 1 | ✅ | [phase-00](journal/phase-00.md) | budget Credit filter still TODO |
 | 1 | Local walking skeleton + CI | 1.5 | ⬜ | | |
 | 2 | Domain model, auth & admin API | 2 | ⬜ | | |
 | 3 | Gate hot path & concurrency ⭐ | 3 | ⬜ | | |
@@ -27,6 +27,7 @@ Status: ⬜ not started · 🟨 in progress · ✅ done · ✂️ cut (see cut l
 ## Session log
 <!-- One line per working session: date — phase — what got done — AWS up/down — next step -->
 - 2026-10-05 — Phase 0 — AWS account (Free plan), root MFA, IAM user `damjan.petrov` in group `Admins` + MFA, no access keys, billing access for IAM, `aws login` works (eu-central-1), budgets `eventpark-monthly` $25 + `eventpark-daily` $5 created — AWS: nothing running — **TODO 2026-10-06:** edit both budgets → Scope → Charge type → Excludes → Credit (Cost Explorer data wasn't available yet); then GitHub repo, journal, checkpoint
+- 2026-10-07 — Phase 0 — study notes (`docs/study/phase-00.md`), journal + agent review, gate spec updated from real-world review (arming loop, ticket-taken sensor, printer paper status, manual exit "released unpaid", tailgating accepted), checkpoint discussed → **Phase 0 done** — AWS: nothing running — next: fix budget Credit filter; start Phase 1
 
 ## Spending log
 <!-- Monday check of Cost Explorer: date — month-to-date cost (before credits) — credits left -->

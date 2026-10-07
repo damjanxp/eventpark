@@ -37,10 +37,15 @@ This file carries over the planning conversation (claude.ai, AWS Project) so any
 codes, online validation per scan (ADR-006), pay at exit lane (synchronous terminal payment).
 
 ## Open items
-- [ ] Confirm drive-up pricing defaults (15 free minutes, 300 RSD per started hour, 1,500 RSD daily cap) against real installations
-      (asked as a comment in the Claude Doc "EventPark — Spec & Learning Path").
-- [ ] Phase 0 journal: Damjan writes down how the real gate system behaves (incl. network failures, reversing cars,
-      lost tickets); then adjust `01-product-and-domain.md` where reality differs.
+- [x] Confirm drive-up pricing defaults (15 free minutes, 300 RSD per started hour, 1,500 RSD daily cap) against real installations.
+      Damjan: "Prices are okay" (2026-10-07).
+- [x] Phase 0 journal: Damjan writes down how the real gate system behaves (incl. network failures, reversing cars,
+      lost tickets); then adjust `01-product-and-domain.md` where reality differs. Done 2026-10-07: arming loop,
+      ticket-taken sensor, printer paper status, manual exit "released unpaid", safety loop / tailgating.
+- [ ] Verify at work (Damjan was unsure): does the Pi ask the server on **every** scan (ADR-006)? What happens on a
+      network drop (barrier stays shut? offline whitelist?).
+- Stance (Damjan, 2026-10-07): EventPark is **inspired by** the real system, not a replica. Domain details may be
+      simplified or invented when reality is unknown. This does **not** relax the architecture (CLAUDE.md §2).
 - [x] Decide repo location: **WSL2 filesystem** (`~/projects/eventpark` in Ubuntu-26.04), decided 2026-10-04.
 - [x] Create AWS account (**Free plan, never upgrade**: zero spend is a hard requirement, ADR-022) + budgets (Phase 0), done 2026-10-05.
       Budgets still count credits until the Charge type filter is added (Cost Explorer data needed first).
