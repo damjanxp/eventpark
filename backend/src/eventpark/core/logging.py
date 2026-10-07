@@ -80,3 +80,5 @@ def configure_logging(settings: Settings) -> None:
         uvicorn_logger = logging.getLogger(name)
         uvicorn_logger.handlers = []
         uvicorn_logger.propagate = True
+    # The request-ID middleware logs one structured "request.finished" line per request instead.
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
