@@ -1,0 +1,58 @@
+[project]
+name = "eventpark"
+version = "0.1.0"
+description = "EventPark backend: API, outbox relay and workers"
+readme = "README.md"
+authors = [
+    { name = "Damjan Petrov", email = "damjanpetrov53@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.142.2",
+    "pydantic-settings>=2.15.0",
+    "structlog>=26.1.0",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.23,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "mypy>=2.4.0",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.16.10",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
+# E/F: pycodestyle + pyflakes, I: import sorting, B: bugbear, UP: modern syntax,
+# ASYNC: blocking calls inside async code, S: security (bandit), RUF: ruff's own rules.
+select = ["E", "F", "I", "B", "UP", "ASYNC", "S", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]  # assert is how pytest works
+
+[tool.mypy]
+python_version = "3.13"
+mypy_path = "src"
+packages = ["eventpark"]
+disallow_untyped_defs = true
+warn_unused_ignores = true
+warn_return_any = true
+
+[[tool.mypy.overrides]]
+# Pure business logic: strictest checking (CLAUDE.md §6).
+module = "eventpark.domain.*"
+strict = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
