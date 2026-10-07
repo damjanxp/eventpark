@@ -125,7 +125,7 @@ How to work with him:
 │   ├── modules/               # network, database, cache, queues, storage, ecs-service, alb, cdn, observability
 │   └── envs/dev/              # the ephemeral environment
 ├── .github/workflows/         # ci.yml, deploy.yml
-└── docs/                      # spec, learning path, decisions, progress, journal
+└── docs/                      # spec, learning path, decisions, progress, journal, study notes
 ```
 
 (Directories appear as their phase is reached. Keep this map updated.)

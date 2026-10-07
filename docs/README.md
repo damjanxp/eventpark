@@ -16,6 +16,7 @@ it to **learn cloud architecture and AWS by doing**, so these docs are both a **
 | [decisions.md](decisions.md) | Architecture Decision Records: why we chose X over Y | When you wonder "why not just…?" |
 | [progress.md](progress.md) | Phase checklist + where you are now | Start and end of each session |
 | `journal/` | **Your** notes: your explanations before building, answers to checkpoints | You write here every phase |
+| `study/` | Study notes per phase: every concept explained in depth (ELI5 + real + self-test questions) | Before writing the phase's journal |
 
 ## How to use them with an AI agent
 
