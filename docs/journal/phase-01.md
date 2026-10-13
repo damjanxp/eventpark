@@ -54,6 +54,26 @@
    👉 **Your turn:** after step 1 (you'll see `config.py`), rewrite this answer in your own words in 2–3 sentences
    under "Things I'm still unsure about", or move it to the checkpoint.
 
+### Follow-up questions (2026-10-13)
+*(Damjan's replies copied word for word.)*
+
+**Q1. Why can Valkey run without a volume, while Postgres must have one?**
+> What's Valkey? Can you explain that first question and all that i need to know before i can answer it
+
+**Q2. After Postgres came back, the first `/readyz` logged `connection is closed`, the next was fine. Why?**
+> I'm not exactly sure, please explain.
+
+**Q3. Why does config come from environment variables?**
+> Config is just a configuration of our env, it has the same skeleton but it differs on every device. (?)
+
+**Agent's notes:**
+- Q1 and Q2 were explained in chat (Valkey/Redis, container filesystem vs volume, connection pool). Answer them
+  again in your own words under "Checkpoint answers" when you're ready.
+- Q3 🟨 **Right core idea**: same code ("skeleton"), different values. Two fixes: it differs per **environment**
+  (your laptop, CI, AWS), not per device; and you're missing the two other reasons: **secrets stay out of git and
+  out of the image**, and you can **change a setting without rebuilding**. Why env vars specifically: every platform
+  (Docker Compose, GitHub Actions, ECS) knows how to set them, so the app doesn't care who started it.
+
 ## Experiments
 
 ## Checkpoint answers
