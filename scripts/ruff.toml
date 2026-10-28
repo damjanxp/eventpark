@@ -1,0 +1,2 @@
+# Lint scripts/ with exactly the same ruff rules as the backend.
+extend = "../backend/pyproject.toml"

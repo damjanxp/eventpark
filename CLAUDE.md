@@ -104,6 +104,8 @@ How to work with him:
 ├── docker-compose.yml         # full local stack
 ├── docker/                    # config files mounted into local emulators (elasticmq.conf, seaweedfs s3.json)
 ├── .env.example
+├── Makefile                   # make up / down / reset / test / lint / smoke ... (`make` lists them)
+├── scripts/                   # dev scripts: emulator smoke test, local bucket creation (not shipped in the image)
 ├── backend/                   # Python package `eventpark` (API + workers + outbox relay)
 │   ├── src/eventpark/
 │   │   ├── api/               # FastAPI routers: admin, gate, public, ws
@@ -151,6 +153,12 @@ How to work with him:
 Fill these in as they are created (Phase 1+). Keep them accurate.
 
 ```bash
+# everyday shortcuts (run `make` to list all)
+make up                         # build + start the whole stack, wait until healthy (creates .env if missing)
+make down / make reset          # stop (keep data) / stop and delete volumes
+make test / make test-fast      # all backend tests / only those that need no Docker
+make lint                       # what CI checks: ruff, ruff format, mypy
+make smoke                      # check the S3/SQS emulators (stack running)
 # local stack
 docker compose up -d            # start infra + services
 docker compose logs -f api
@@ -160,7 +168,8 @@ uv run pytest                   # all tests (integration tests start containers:
 uv run pytest -m "not integration"   # fast tests only, no Docker
 uv run --env-file ../.env uvicorn eventpark.app:create_app --factory --reload   # API on the host
 uv run ruff check . && uv run ruff format --check . && uv run mypy src
-uv run alembic upgrade head
+uv run --env-file ../.env alembic upgrade head          # (init service does this on `make up`)
+uv run --env-file ../.env alembic revision --autogenerate -m "..."   # draft a migration, then REVIEW it
 # frontend
 cd frontend && npm ci && npm run dev
 # simulator

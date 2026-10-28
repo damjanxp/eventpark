@@ -18,6 +18,14 @@ x-backend-env: &backend-env
   LOG_FORMAT: ${LOG_FORMAT:-console}
   DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
   REDIS_URL: redis://valkey:6379/0
+  AWS_REGION: eu-central-1
+  AWS_DEFAULT_REGION: eu-central-1
+  AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-eventpark-local}
+  AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-eventpark-local-secret}
+  AWS_ENDPOINT_URL_S3: http://seaweedfs:8333
+  AWS_ENDPOINT_URL_SQS: http://elasticmq:9324
+  S3_PUBLIC_ENDPOINT_URL: http://localhost:8333  # what your browser can reach, used to sign URLs (§14 gotcha)
+  BUCKET_FILES: ${BUCKET_FILES:-eventpark-files}
 
 services:
   postgres:
@@ -101,11 +109,14 @@ services:
       retries: 10
 
   init:
-    # One-shot job: bring the database schema up to date, then exit. On AWS the same image runs the same
-    # command as a one-off ECS task before a deploy (Phase 13).
+    # One-shot job: bring the database schema up to date and create the local S3 bucket, then exit.
+    # On AWS the same image runs `alembic upgrade head` as a one-off ECS task before a deploy (Phase 13);
+    # buckets there come from Terraform, so the bucket script is mounted in from scripts/ (local only).
     build: ./backend
     image: eventpark-backend:local
-    command: ["alembic", "upgrade", "head"]
+    command: ["sh", "-c", "alembic upgrade head && python /scripts/create_local_buckets.py"]
+    volumes:
+      - ./scripts:/scripts:ro
     environment:
       <<: *backend-env
       SERVICE_NAME: init
@@ -114,6 +125,8 @@ services:
     restart: "no"
     depends_on:
       postgres:
+        condition: service_healthy
+      seaweedfs:
         condition: service_healthy
 
   api:

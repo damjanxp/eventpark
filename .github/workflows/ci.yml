@@ -1,0 +1,79 @@
+# Continuous Integration: on every push to main and every pull request, a fresh GitHub-hosted Linux machine
+# ("runner") checks out the code and runs the same checks you run locally. A red ❌ means: don't merge.
+#
+# Jobs run in parallel on separate runners:
+#   backend: lint + formatting + types + all tests (integration tests start real Postgres/Valkey via Docker)
+#   stack:   "fresh clone" test: make up -> /readyz -> smoke test of the S3/SQS emulators
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least privilege: this workflow only needs to read the code. (Deploys get their own permissions, Phase 13.)
+permissions:
+  contents: read
+
+# A newer push to the same branch cancels the run that's still going for the older commit.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10
+        with:
+          version: "0.12.23"  # same uv as locally and in the Dockerfile
+          enable-cache: true  # reuse downloaded packages between runs (keyed on uv.lock)
+
+      - name: Install dependencies (exactly as locked)
+        run: uv sync --locked
+
+      - name: Lint (ruff)
+        run: uv run ruff check . && uv run ruff check ../scripts
+
+      - name: Formatting (ruff format)
+        run: uv run ruff format --check . && uv run ruff format --check ../scripts
+
+      - name: Types (mypy)
+        run: uv run mypy src
+
+      - name: Tests (pytest, incl. testcontainers)
+        run: uv run pytest
+
+  stack:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10
+        with:
+          version: "0.12.23"
+
+      - name: Start the local stack (fresh clone -> make up)
+        run: make up
+
+      - name: API is ready
+        run: curl --fail --silent --show-error --retry 5 --retry-delay 2 --retry-all-errors http://localhost:8000/readyz
+
+      - name: AWS emulators behave like S3/SQS
+        run: make smoke
+
+      - name: Logs (only if something failed)
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Stop the stack
+        if: always()
+        run: docker compose down -v
