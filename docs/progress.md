@@ -6,7 +6,7 @@
 | # | Phase | Est. days | Status | Journal | Notes |
 |---|---|---|---|---|---|
 | 0 | Foundations & safe AWS account | 1 | ✅ | [phase-00](journal/phase-00.md) | budget Credit filter still TODO |
-| 1 | Local walking skeleton + CI | 1.5 | 🟨 | [phase-01](journal/phase-01.md) | steps 1–3 of 6 done |
+| 1 | Local walking skeleton + CI | 1.5 | 🟨 | [phase-01](journal/phase-01.md) | all tasks built; waiting: push → CI green, checkpoint |
 | 2 | Domain model, auth & admin API | 2 | ⬜ | | |
 | 3 | Gate hot path & concurrency ⭐ | 3 | ⬜ | | |
 | 4 | Gate controller (the Pi) | 1.5 | ⬜ | | |
@@ -32,6 +32,10 @@ Status: ⬜ not started · 🟨 in progress · ✅ done · ✂️ cut (see cut l
   middleware, docker compose (postgres on host port 5433, valkey, elasticmq, seaweedfs, mailpit), /readyz +
   testcontainers tests; readiness experiment (stop Postgres) done — AWS: nothing running — next: Dockerfile + api/init
   services, then Alembic + users table, smoke script, CI, Makefile
+- 2026-10-28 — Phase 1 — Dockerfile (multi-stage, non-root, code in own layer), api + init services, Alembic +
+  `users` table (ADR-023: UUIDv7 in Python, enums as CHECK), emulator smoke script (10/10), local bucket creation,
+  Makefile, ci.yml (both jobs pass on a fresh clone locally); all 3 experiments recorded in the journal — AWS:
+  nothing running — next: push to GitHub (CI must go green), Phase 1 checkpoint, then Phase 2
 
 ## Spending log
 <!-- Monday check of Cost Explorer: date — month-to-date cost (before credits) — credits left -->
