@@ -1,0 +1,16 @@
+# Files Docker never sends to the build ("build context"). Smaller context = faster builds, and nothing
+# local or secret can end up in an image by accident.
+.venv/
+**/__pycache__/
+**/*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+tests/
+.env
+.env.*
+Dockerfile
+.dockerignore

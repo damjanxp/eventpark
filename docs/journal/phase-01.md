@@ -75,8 +75,24 @@
   (Docker Compose, GitHub Actions, ECS) knows how to set them, so the app doesn't care who started it.
 
 ## Experiments
+*(Run by the agent on 2026-10-07 and 2026-10-28; results recorded here so you can repeat them.)*
+
+1. **Stop Postgres: what do `/healthz` and `/readyz` return?**
+   `docker compose stop postgres` → `/healthz` 200, `/readyz` **503** `{"postgres":"fail","redis":"ok"}`.
+   `docker compose start postgres` → `/readyz` back to 200 by itself, no API restart. The first check after the
+   restart logged `connection is closed`: a stale connection from the pool (see follow-up Q2).
+2. **Layer caching: change one line of code vs change `pyproject.toml`.**
+   - First version of the Dockerfile installed our code *into* `.venv` → a one-line change produced a new
+     **97 MB** layer. Fixed: dependencies in `.venv`, our code in its own layer (`/app/src`).
+   - Code change → only `COPY src` re-runs, new layer **61 kB**, ~10 s (mostly Docker Desktop export overhead).
+   - `pyproject.toml` change → the `uv sync` dependency step re-runs, then *every layer after it* (`.venv` 97 MB,
+     then `src`), ~15 s here only because uv's download cache is warm; in CI with a cold cache it downloads everything.
+   - Lesson: Docker reuses a layer only if that step **and every step before it** are unchanged, so order steps from
+     least to most frequently changing. On AWS this also means a code-only deploy pushes kB to ECR, not 100 MB.
 
 ## Checkpoint answers
 1. …
 
 ## Things I'm still unsure about
+- **Deferred (2026-10-28):** follow-up Q1 (Postgres volume vs Valkey without one) and Q2 (connection pool healing)
+  above: answer them in my own words when the project is almost finished.

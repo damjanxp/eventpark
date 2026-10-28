@@ -90,6 +90,39 @@ services:
       timeout: 3s
       retries: 10
 
+  api:
+    build: ./backend
+    image: eventpark-backend:local  # every backend role will reuse this one image (ADR-001)
+    # Dev mode: same command as the image's CMD plus --reload, which restarts uvicorn when a file in src changes.
+    command:
+      - uvicorn
+      - eventpark.app:create_app
+      - --factory
+      - --host=0.0.0.0
+      - --port=8000
+      - --reload
+      - --reload-dir=/app/src
+    # Set explicitly instead of `env_file: .env`: the .env URLs point at localhost:5433 (for tools on your
+    # machine), but inside the Compose network Postgres is postgres:5432 and Valkey is valkey:6379.
+    environment:
+      SERVICE_NAME: api
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FORMAT: ${LOG_FORMAT:-console}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://valkey:6379/0
+    volumes:
+      # Bind mount (dev only): your ./backend/src replaces the image's /app/src, so an edit on your machine is
+      # seen by the container at once and --reload restarts the app. Read-only: the container can't change it.
+      - ./backend/src:/app/src:ro
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      # Wait until the dependencies' healthchecks pass, not merely until their containers have started.
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+
 volumes:
   postgres-data:
   seaweedfs-data:
