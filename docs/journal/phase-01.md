@@ -89,6 +89,10 @@
      then `src`), ~15 s here only because uv's download cache is warm; in CI with a cold cache it downloads everything.
    - Lesson: Docker reuses a layer only if that step **and every step before it** are unchanged, so order steps from
      least to most frequently changing. On AWS this also means a code-only deploy pushes kB to ECR, not 100 MB.
+3. **`docker compose down` vs `down -v`: what happened to your data?**
+   Inserted 1 user → `down` + `up` → **still 1** (the named volume `eventpark_postgres-data` survived; only the
+   containers and the network were removed) → `down -v` + `up` → **0** (volumes deleted; `init` ran the migrations
+   again on the empty database, so the table exists but is empty).
 
 ## Checkpoint answers
 1. …

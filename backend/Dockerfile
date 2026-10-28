@@ -46,10 +46,13 @@ RUN groupadd --system --gid 10001 app \
  && useradd --system --uid 10001 --gid app --no-create-home --shell /usr/sbin/nologin app
 
 # Layer order = least to most frequently changing:
-#   1. .venv  (~100 MB, changes when dependencies change)  -> usually reused from cache
-#   2. src    (~100 KB, changes on every commit)           -> the only layer rebuilt and pushed to ECR
+#   1. .venv        (~100 MB, changes when dependencies change)  -> usually reused from cache
+#   2. migrations   (small, changes with schema changes)
+#   3. src          (~100 KB, changes on every commit)           -> usually the only layer rebuilt and pushed to ECR
 # No --chown: files stay owned by root, so the app user can read and run its code but not modify it.
 COPY --from=builder /app/.venv /app/.venv
+COPY alembic.ini /app/alembic.ini
+COPY migrations /app/migrations
 COPY src /app/src
 
 ENV PATH="/app/.venv/bin:${PATH}" \

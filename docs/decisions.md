@@ -149,3 +149,23 @@ number. Superseded decisions stay, marked *Superseded by ADR-xxx*. When you wond
   useful as **early warnings** that credits are burning. All AWS phases (10–15) must finish within 6 months of sign-up.
   If a service turns out not to be available on the Free plan, we adapt the design (new ADR) instead of upgrading.
   Expected spend: about $2–2.5 per 8-hour AWS day × about 10 days ≈ $25–40 of credits.
+
+### ADR-023 — UUIDv7 generated in Python; enums as `varchar` + `CHECK`
+- **Context:** `02` §"Data model" says `id uuid` primary keys (UUIDv7, time-sortable) and "enums as Postgres enums or
+  `text` + `CHECK`", without choosing. The first table (`users`, Phase 1) has to pick both, and every later table
+  follows it. Postgres 17 has no built-in UUIDv7 function (`uuidv7()` arrives in 18); Python's `uuid.uuid7()`
+  arrives in 3.14 (we pin 3.13).
+- **Decision:**
+  - **IDs:** a small RFC 9562 UUIDv7 generator in `core/ids.py`, used as the SQLAlchemy column `default`. The app
+    knows an ID before the INSERT (useful for outbox messages and logs). Switch to `uuid.uuid7()` when we move to
+    Python 3.14.
+  - **Enums:** `varchar(32)` + a named `CHECK (col IN (...))` constraint (SQLAlchemy `Enum(native_enum=False,
+    create_constraint=True)` in the model; written out explicitly in migrations so a migration never changes
+    meaning when the Python enum changes later).
+- **Alternatives:** random UUIDv4 (`gen_random_uuid()`, scattered inserts in the primary-key B-tree index);
+  `bigserial` (sortable and small, but guessable IDs in URLs and the DB must hand them out); a `uuid6`/`uuid-utils`
+  dependency (fine, but 15 lines don't need a dependency); Postgres `ENUM` types (`ALTER TYPE ... ADD VALUE` is
+  awkward in migrations, removing a value means recreating the type).
+- **Consequences:** raw SQL inserts must supply an `id` (no server default), e.g. tests use `gen_random_uuid()`.
+  Adding an enum value = a migration that drops and recreates the `CHECK` constraint (cheap, one transaction).
+  Constraint names come from the naming convention in `db/base.py` (`ck_users_role`, `uq_users_email`, ...).

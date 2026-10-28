@@ -1,0 +1,7 @@
+Alembic migrations for the EventPark database. See ../alembic.ini for commands.
+
+Rules (CLAUDE.md §8):
+- one revision per schema change;
+- never edit a migration that has been applied anywhere (write a new one instead);
+- autogenerate is a draft: always read it before committing (it misses CHECK constraints,
+  extensions, data changes and renames, which it sees as drop + add).

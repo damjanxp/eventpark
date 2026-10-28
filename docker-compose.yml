@@ -9,6 +9,16 @@
 
 name: eventpark
 
+# Settings shared by every container built from the backend image (api, init, later relay + workers).
+# "x-" = an extension field Compose ignores; "&backend-env" names it so services can reuse it with "*backend-env".
+# Set explicitly instead of `env_file: .env`: the .env URLs point at localhost:5433 (for tools on your machine),
+# but inside the Compose network Postgres is postgres:5432 and Valkey is valkey:6379.
+x-backend-env: &backend-env
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  LOG_FORMAT: ${LOG_FORMAT:-console}
+  DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+  REDIS_URL: redis://valkey:6379/0
+
 services:
   postgres:
     # Pinned version, same major as RDS on AWS (Phase 11).
@@ -90,6 +100,22 @@ services:
       timeout: 3s
       retries: 10
 
+  init:
+    # One-shot job: bring the database schema up to date, then exit. On AWS the same image runs the same
+    # command as a one-off ECS task before a deploy (Phase 13).
+    build: ./backend
+    image: eventpark-backend:local
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      <<: *backend-env
+      SERVICE_NAME: init
+    healthcheck:
+      disable: true  # the image's healthcheck probes the API port; a migration job has none
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api:
     build: ./backend
     image: eventpark-backend:local  # every backend role will reuse this one image (ADR-001)
@@ -102,14 +128,9 @@ services:
       - --port=8000
       - --reload
       - --reload-dir=/app/src
-    # Set explicitly instead of `env_file: .env`: the .env URLs point at localhost:5433 (for tools on your
-    # machine), but inside the Compose network Postgres is postgres:5432 and Valkey is valkey:6379.
     environment:
+      <<: *backend-env
       SERVICE_NAME: api
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      LOG_FORMAT: ${LOG_FORMAT:-console}
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      REDIS_URL: redis://valkey:6379/0
     volumes:
       # Bind mount (dev only): your ./backend/src replaces the image's /app/src, so an edit on your machine is
       # seen by the container at once and --reload restarts the app. Read-only: the container can't change it.
@@ -117,7 +138,10 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
-      # Wait until the dependencies' healthchecks pass, not merely until their containers have started.
+      # Wait until the dependencies' healthchecks pass, not merely until their containers have started,
+      # and until init has finished successfully (the API must never run against an old schema).
+      init:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       valkey:
