@@ -7,7 +7,7 @@
 |---|---|---|---|---|---|
 | 0 | Foundations & safe AWS account | 1 | ✅ | [phase-00](journal/phase-00.md) | budget Credit filter still TODO |
 | 1 | Local walking skeleton + CI | 1.5 | 🟨 | [phase-01](journal/phase-01.md) | all tasks built; waiting: push → CI green, checkpoint |
-| 2 | Domain model, auth & admin API | 2 | ⬜ | | |
+| 2 | Domain model, auth & admin API | 2 | 🟨 | [phase-02](journal/phase-02.md) | prep: security core done; waiting for table-design journal |
 | 3 | Gate hot path & concurrency ⭐ | 3 | ⬜ | | |
 | 4 | Gate controller (the Pi) | 1.5 | ⬜ | | |
 | 5 | Payments & booking | 2 | ⬜ | | |
@@ -36,6 +36,8 @@ Status: ⬜ not started · 🟨 in progress · ✅ done · ✂️ cut (see cut l
   `users` table (ADR-023: UUIDv7 in Python, enums as CHECK), emulator smoke script (10/10), local bucket creation,
   Makefile, ci.yml (both jobs pass on a fresh clone locally); all 3 experiments recorded in the journal — AWS:
   nothing running — next: push to GitHub (CI must go green), Phase 1 checkpoint, then Phase 2
+- 2026-10-28 — Phase 2 (prep) — `core/security.py` (argon2id, HS256 JWT, refresh-token hashing) + tests;
+  `journal/phase-02.md` created (table design exercise) — tables/endpoints wait for Damjan's design
 
 ## Spending log
 <!-- Monday check of Cost Explorer: date — month-to-date cost (before credits) — credits left -->
