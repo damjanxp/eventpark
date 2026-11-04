@@ -189,6 +189,7 @@ services:
 
   # --- async backbone: same image as the api, different command (ADR-001) ---
   outbox-relay:
+    build: ./backend  # every backend role builds the same image (BuildKit cache: built once)
     image: eventpark-backend:local
     command: ["python", "-m", "eventpark.relay"]
     environment:
@@ -206,6 +207,7 @@ services:
         condition: service_healthy
 
   worker-entry:
+    build: ./backend  # every backend role builds the same image (BuildKit cache: built once)
     image: eventpark-backend:local
     command: ["python", "-m", "eventpark.workers", "entry"]
     environment:
@@ -219,6 +221,7 @@ services:
     depends_on: *worker-deps
 
   worker-exit:
+    build: ./backend  # every backend role builds the same image (BuildKit cache: built once)
     image: eventpark-backend:local
     command: ["python", "-m", "eventpark.workers", "exit"]
     environment:
@@ -232,6 +235,7 @@ services:
     depends_on: *worker-deps
 
   worker-notifications:
+    build: ./backend  # every backend role builds the same image (BuildKit cache: built once)
     image: eventpark-backend:local
     command: ["python", "-m", "eventpark.workers", "notifications"]
     environment:
@@ -245,6 +249,7 @@ services:
     depends_on: *worker-deps
 
   worker-reports:
+    build: ./backend  # every backend role builds the same image (BuildKit cache: built once)
     image: eventpark-backend:local
     command: ["python", "-m", "eventpark.workers", "reports"]
     environment:
@@ -258,6 +263,7 @@ services:
     depends_on: *worker-deps
 
   worker-maintenance:
+    build: ./backend  # every backend role builds the same image (BuildKit cache: built once)
     image: eventpark-backend:local
     command: ["python", "-m", "eventpark.workers", "maintenance"]
     environment:
@@ -272,6 +278,7 @@ services:
 
   ticker:
     # Local stand-in for EventBridge Scheduler: one "tick" per minute into the maintenance queue.
+    build: ./backend  # every backend role builds the same image (BuildKit cache: built once)
     image: eventpark-backend:local
     command: ["python", "-m", "eventpark.ticker"]
     environment:
