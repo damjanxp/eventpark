@@ -30,3 +30,4 @@ crash.log
 .idea/
 .DS_Store
 Thumbs.db
+.devices.local.json

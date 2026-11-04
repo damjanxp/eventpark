@@ -2,7 +2,7 @@
 # Each target is just the command(s) you'd otherwise type; read them to learn what really runs.
 
 .DEFAULT_GOAL := help
-.PHONY: help up down reset logs ps migrate test test-fast lint fmt smoke
+.PHONY: help up down reset logs ps migrate seed test test-fast lint fmt smoke
 
 BACKEND := cd backend &&
 # Host-side tools (alembic, smoke script) read the same .env as Compose; its URLs point at localhost.
@@ -31,6 +31,9 @@ ps: ## Show the stack's containers and their health
 
 migrate: .env ## Apply database migrations from your machine (the init service does this on `make up`)
 	$(BACKEND) uv run $(ENV_FILE) alembic upgrade head
+
+seed: .env ## Demo venue, users (one per role), a live + a future event; device keys -> .devices.local.json
+	$(BACKEND) uv run $(ENV_FILE) python -m eventpark.seed --out ../.devices.local.json
 
 test: ## All backend tests (integration tests start their own containers: needs Docker)
 	$(BACKEND) uv run pytest

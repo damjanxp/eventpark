@@ -1,13 +1,13 @@
 # Progress
 
-**Active phase:** Phase 1 — Local walking skeleton + CI
+**Active phase:** Phase 3 — Gate hot path & concurrency
 **AWS dev environment:** ⛔ down   *(update whenever you run aws-up / aws-down)*
 
 | # | Phase | Est. days | Status | Journal | Notes |
 |---|---|---|---|---|---|
 | 0 | Foundations & safe AWS account | 1 | ✅ | [phase-00](journal/phase-00.md) | budget Credit filter still TODO |
-| 1 | Local walking skeleton + CI | 1.5 | 🟨 | [phase-01](journal/phase-01.md) | all tasks built; waiting: push → CI green, checkpoint |
-| 2 | Domain model, auth & admin API | 2 | 🟨 | [phase-02](journal/phase-02.md) | prep: security core done; waiting for table-design journal |
+| 1 | Local walking skeleton + CI | 1.5 | ✅ | [phase-01](journal/phase-01.md) | CI green; checkpoint answers deferred |
+| 2 | Domain model, auth & admin API | 2 | ✅ | [phase-02](journal/phase-02.md) | journal + checkpoint deferred |
 | 3 | Gate hot path & concurrency ⭐ | 3 | ⬜ | | |
 | 4 | Gate controller (the Pi) | 1.5 | ⬜ | | |
 | 5 | Payments & booking | 2 | ⬜ | | |
@@ -38,6 +38,10 @@ Status: ⬜ not started · 🟨 in progress · ✅ done · ✂️ cut (see cut l
   nothing running — next: push to GitHub (CI must go green), Phase 1 checkpoint, then Phase 2
 - 2026-10-28 — Phase 2 (prep) — `core/security.py` (argon2id, HS256 JWT, refresh-token hashing) + tests;
   `journal/phase-02.md` created (table design exercise) — tables/endpoints wait for Damjan's design
+- 2026-11-04 — Phase 1 → CI green on GitHub. Phase 2 — all tables + migration, auth (login/refresh rotation +
+  reuse detection/logout/register/me), require_roles, event lifecycle state machine, admin CRUD (users, venues, zones,
+  spaces, gates, devices, events, pricing, zones), audit log, seed (`make seed`), ADR-024 (device keys SHA-256) —
+  journals/checkpoints deferred by Damjan — AWS: nothing running — next: Phase 3
 
 ## Spending log
 <!-- Monday check of Cost Explorer: date — month-to-date cost (before credits) — credits left -->

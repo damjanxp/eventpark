@@ -159,6 +159,7 @@ make down / make reset          # stop (keep data) / stop and delete volumes
 make test / make test-fast      # all backend tests / only those that need no Docker
 make lint                       # what CI checks: ruff, ruff format, mypy
 make smoke                      # check the S3/SQS emulators (stack running)
+make seed                       # demo venue/users/events; device keys -> .devices.local.json (password: eventpark-demo-pass)
 # local stack
 docker compose up -d            # start infra + services
 docker compose logs -f api

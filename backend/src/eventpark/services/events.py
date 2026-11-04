@@ -243,7 +243,8 @@ async def set_zones(
                 ]
             },
         )
-    return (await get_event_detail(session, event_id)).zones
+        detail = await get_event_detail(session, event_id)
+    return detail.zones
 
 
 async def apply_action(
