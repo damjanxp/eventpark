@@ -119,7 +119,7 @@ How to work with him:
 │   │   └── core/              # config, security (JWT, hashing), logging, errors
 │   ├── migrations/            # Alembic
 │   └── tests/                 # unit / integration / concurrency
-├── gate-controller/           # Python edge-device service (the "Raspberry Pi")
+├── gate-controller/           # Python edge-device service (the "Raspberry Pi"): package gatectl
 ├── fakepay/                   # simulated payment provider (FastAPI)
 ├── simulator/                 # traffic simulator + invariant checker
 ├── frontend/                  # React + TS + Vite: dashboard, operator console, booking site
@@ -159,6 +159,7 @@ make down / make reset          # stop (keep data) / stop and delete volumes
 make test / make test-fast      # all backend tests / only those that need no Docker
 make lint                       # what CI checks: ruff, ruff format, mypy
 make smoke                      # check the S3/SQS emulators (stack running)
+make lane GATE=N1               # drive one lane by keyboard (entry N1..S2, exit X1..X3), after make seed
 make seed                       # demo venue/users/events; device keys -> .devices.local.json (password: eventpark-demo-pass)
 # local stack
 docker compose up -d            # start infra + services

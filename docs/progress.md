@@ -1,6 +1,6 @@
 # Progress
 
-**Active phase:** Phase 4 — Gate controller (the Pi)
+**Active phase:** Phase 5 — Payments & booking
 **AWS dev environment:** ⛔ down   *(update whenever you run aws-up / aws-down)*
 
 | # | Phase | Est. days | Status | Journal | Notes |
@@ -9,7 +9,7 @@
 | 1 | Local walking skeleton + CI | 1.5 | ✅ | [phase-01](journal/phase-01.md) | CI green; checkpoint answers deferred |
 | 2 | Domain model, auth & admin API | 2 | ✅ | [phase-02](journal/phase-02.md) | journal + checkpoint deferred |
 | 3 | Gate hot path & concurrency ⭐ | 3 | ✅ | | experiment: [phase-03-allocation](experiments/phase-03-allocation.md); journal + checkpoint deferred |
-| 4 | Gate controller (the Pi) | 1.5 | ⬜ | | |
+| 4 | Gate controller (the Pi) | 1.5 | ✅ | | experiments: [phase-04](experiments/phase-04-gate-controller.md); journal + checkpoint deferred |
 | 5 | Payments & booking | 2 | ⬜ | | |
 | 6 | Outbox, SQS, workers, S3 | 2.5 | ⬜ | | |
 | 7 | Redis: cache, read model, rate limit, realtime | 1.5 | ⬜ | | |
@@ -46,6 +46,9 @@ Status: ⬜ not started · 🟨 in progress · ✅ done · ✂️ cut (see cut l
   allocation, complete/abort, exit scan with fee, heartbeat/commands), idempotency incl. concurrent duplicates, lazy
   hold expiry, fee function, concurrency tests, allocation experiment (naive: 191 tickets for 10 places), ADR-025 —
   AWS: nothing running — next: Phase 4
+- 2026-11-04 — Phase 4 — gate-controller package (HAL protocols + simulated hardware, client with timeout/retries/
+  backoff+jitter, lane state machine entry/exit incl. payment states, heartbeat + commands), `make lane GATE=N1`,
+  API-outage experiment (1 passage), init now mounts migrations (stale-image bug), CI job — next: Phase 5
 
 ## Spending log
 <!-- Monday check of Cost Explorer: date — month-to-date cost (before credits) — credits left -->

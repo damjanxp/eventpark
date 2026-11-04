@@ -118,6 +118,10 @@ services:
     command: ["sh", "-c", "alembic upgrade head && python /scripts/create_local_buckets.py"]
     volumes:
       - ./scripts:/scripts:ro
+      # Dev only: use the migrations from your working copy, like the api uses ./backend/src. Without this, an image
+      # built before you added a migration would refuse to start ("Can't locate revision"): we hit exactly that.
+      - ./backend/migrations:/app/migrations:ro
+      - ./backend/src:/app/src:ro
     environment:
       <<: *backend-env
       SERVICE_NAME: init

@@ -2,7 +2,7 @@
 # Each target is just the command(s) you'd otherwise type; read them to learn what really runs.
 
 .DEFAULT_GOAL := help
-.PHONY: help up down reset logs ps migrate seed test test-fast lint fmt smoke
+.PHONY: help up down reset logs ps migrate seed lane test test-fast lint fmt smoke
 
 BACKEND := cd backend &&
 # Host-side tools (alembic, smoke script) read the same .env as Compose; its URLs point at localhost.
@@ -35,8 +35,13 @@ migrate: .env ## Apply database migrations from your machine (the init service d
 seed: .env ## Demo venue, users (one per role), a live + a future event; device keys -> .devices.local.json
 	$(BACKEND) uv run $(ENV_FILE) python -m eventpark.seed --out ../.devices.local.json
 
-test: ## All backend tests (integration tests start their own containers: needs Docker)
+GATE ?= N1
+lane: ## Drive one lane by keyboard: make lane GATE=N1 (entry N1..S2, exit X1..X3); after `make seed`
+	python3 scripts/run_lane.py $(GATE)
+
+test: ## All tests: backend (integration tests start containers: needs Docker) + gate controller
 	$(BACKEND) uv run pytest
+	cd gate-controller && uv run pytest
 
 test-fast: ## Backend tests that need no Docker
 	$(BACKEND) uv run pytest -m "not integration"
@@ -44,6 +49,7 @@ test-fast: ## Backend tests that need no Docker
 lint: ## The same checks as CI: lint, formatting, types
 	$(BACKEND) uv run ruff check . && uv run ruff format --check . && uv run mypy src
 	uvx ruff check scripts && uvx ruff format --check scripts
+	cd gate-controller && uv run ruff check . && uv run ruff format --check . && uv run mypy
 
 fmt: ## Auto-fix lint issues and format the code
 	$(BACKEND) uv run ruff check --fix . && uv run ruff format .
