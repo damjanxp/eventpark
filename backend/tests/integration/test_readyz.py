@@ -40,6 +40,7 @@ def settings(request: pytest.FixtureRequest, postgres: PostgresContainer, valkey
     return Settings(
         database_url=postgres.get_connection_url(),
         redis_url="redis://127.0.0.1:1/0" if redis_down else _redis_url(valkey),
+        jwt_secret="test-jwt-secret-0123456789abcdef0123456789",
         log_format="json",
     )
 

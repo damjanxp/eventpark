@@ -7,10 +7,11 @@ process at startup with a clear error instead of failing later on the first requ
 Local values live in the repo-root `.env` (gitignored; see `.env.example`). On AWS, ECS injects them.
 """
 
+from datetime import timedelta
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import PostgresDsn, RedisDsn
+from pydantic import Field, PostgresDsn, RedisDsn, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -31,6 +32,23 @@ class Settings(BaseSettings):
     # The Dsn types check the format (scheme, host, port) at startup too.
     database_url: PostgresDsn  # postgresql+asyncpg://user:password@host:5432/dbname
     redis_url: RedisDsn  # redis://host:6379/0   (rediss:// = TLS, used on AWS)
+
+    # --- auth (docs/02-architecture.md §9) ---
+    # Signs access tokens (HS256). SecretStr: printing the settings shows '**********', never the value.
+    # At least 32 bytes: an HMAC key shorter than the hash output (SHA-256 = 32 bytes) is weaker than it could be.
+    jwt_secret: SecretStr = Field(min_length=32)
+    access_token_ttl_seconds: int = Field(default=15 * 60, gt=0)
+    refresh_token_ttl_days: int = Field(default=7, gt=0)
+    # Secure cookies are only sent over HTTPS. Browsers treat http://localhost as secure too, so this stays on.
+    auth_cookie_secure: bool = True
+
+    @property
+    def access_token_ttl(self) -> timedelta:
+        return timedelta(seconds=self.access_token_ttl_seconds)
+
+    @property
+    def refresh_token_ttl(self) -> timedelta:
+        return timedelta(days=self.refresh_token_ttl_days)
 
 
 @lru_cache

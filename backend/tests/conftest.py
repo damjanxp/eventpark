@@ -25,6 +25,7 @@ def settings() -> Settings:
     return Settings(
         database_url="postgresql+asyncpg://eventpark:unused@127.0.0.1:1/eventpark",
         redis_url="redis://127.0.0.1:1/0",
+        jwt_secret="test-jwt-secret-0123456789abcdef0123456789",
         log_format="json",
         log_level="INFO",
     )
@@ -40,9 +41,10 @@ async def client(app: FastAPI) -> AsyncIterator[AsyncClient]:
     """An HTTP client that talks to the app in memory (no real network, no uvicorn).
 
     LifespanManager runs the app's startup/shutdown code, which ASGITransport alone skips.
+    https:// so the client keeps and sends `Secure` cookies (the refresh token), like a browser would.
     """
     async with (
         LifespanManager(app) as manager,
-        AsyncClient(transport=ASGITransport(app=manager.app), base_url="http://test") as client,
+        AsyncClient(transport=ASGITransport(app=manager.app), base_url="https://test") as client,
     ):
         yield client

@@ -18,6 +18,7 @@ x-backend-env: &backend-env
   LOG_FORMAT: ${LOG_FORMAT:-console}
   DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
   REDIS_URL: redis://valkey:6379/0
+  JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
   AWS_REGION: eu-central-1
   AWS_DEFAULT_REGION: eu-central-1
   AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-eventpark-local}
