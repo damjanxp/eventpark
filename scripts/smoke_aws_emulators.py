@@ -113,16 +113,21 @@ def sqs_checks() -> None:
         check(f"SQS queue {name}", queue_config)
 
     def send_receive_delete() -> str:
-        url = sqs.get_queue_url(QueueName="maintenance")["QueueUrl"]
-        body = json.dumps({"type": "smoke.test", "message_id": str(uuid.uuid4())})
-        sqs.send_message(QueueUrl=url, MessageBody=body)
-        messages = sqs.receive_message(QueueUrl=url, MaxNumberOfMessages=1, WaitTimeSeconds=2).get("Messages", [])
-        expect(bool(messages), "no message received")
-        expect(messages[0]["Body"] == body, messages[0]["Body"])
-        sqs.delete_message(QueueUrl=url, ReceiptHandle=messages[0]["ReceiptHandle"])
-        left = sqs.receive_message(QueueUrl=url, MaxNumberOfMessages=1, WaitTimeSeconds=1).get("Messages", [])
-        expect(not left, f"message still there after delete: {left}")
-        return "send -> receive -> delete on 'maintenance', queue empty afterwards"
+        # A throwaway queue of our own: the real queues have workers consuming them (they'd steal our message).
+        name = f"smoke-{uuid.uuid4().hex[:8]}"
+        url = sqs.create_queue(QueueName=name)["QueueUrl"]
+        try:
+            body = json.dumps({"type": "smoke.test", "message_id": str(uuid.uuid4())})
+            sqs.send_message(QueueUrl=url, MessageBody=body)
+            messages = sqs.receive_message(QueueUrl=url, MaxNumberOfMessages=1, WaitTimeSeconds=2).get("Messages", [])
+            expect(bool(messages), "no message received")
+            expect(messages[0]["Body"] == body, messages[0]["Body"])
+            sqs.delete_message(QueueUrl=url, ReceiptHandle=messages[0]["ReceiptHandle"])
+            left = sqs.receive_message(QueueUrl=url, MaxNumberOfMessages=1, WaitTimeSeconds=1).get("Messages", [])
+            expect(not left, f"message still there after delete: {left}")
+        finally:
+            sqs.delete_queue(QueueUrl=url)
+        return f"send -> receive -> delete on a temporary queue ({name}), empty afterwards"
 
     check("SQS send/receive/delete", send_receive_delete)
 
