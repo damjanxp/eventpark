@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 from alembic import command
 from alembic.config import Config
+from redis.asyncio import Redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from testcontainers.community.postgres import PostgresContainer
@@ -76,6 +77,9 @@ async def settings(shared_postgres: PostgresContainer, shared_valkey: RedisConta
     url = shared_postgres.get_connection_url()
     await _truncate_all(url)
     host, port = shared_valkey.get_container_host_ip(), shared_valkey.get_exposed_port(6379)
+    flush = Redis.from_url(f"redis://{host}:{port}/0")
+    await flush.flushdb()  # fresh Redis too: no rate-limit buckets or cached events from the previous test
+    await flush.aclose()
     return Settings(
         database_url=url,  # type: ignore[arg-type]
         redis_url=f"redis://{host}:{port}/0",  # type: ignore[arg-type]

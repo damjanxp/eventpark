@@ -8,7 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from eventpark.core.errors import AppError, Unauthorized
+from eventpark.core.errors import AppError, RateLimited, Unauthorized
 
 PROBLEM_JSON = "application/problem+json"
 log = structlog.get_logger()
@@ -33,6 +33,8 @@ def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def app_error(_request: Request, exc: AppError) -> JSONResponse:
         headers = {"WWW-Authenticate": "Bearer"} if isinstance(exc, Unauthorized) else None
+        if isinstance(exc, RateLimited):
+            headers = {"Retry-After": str(exc.retry_after)}  # standard header: when to try again
         if exc.status >= 500:
             log.error("request.app_error", code=exc.code, detail=exc.detail)
         return JSONResponse(

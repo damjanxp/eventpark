@@ -12,7 +12,7 @@
 | 4 | Gate controller (the Pi) | 1.5 | ✅ | | experiments: [phase-04](experiments/phase-04-gate-controller.md); journal + checkpoint deferred |
 | 5 | Payments & booking | 2 | ✅ | | journal + checkpoint deferred |
 | 6 | Outbox, SQS, workers, S3 | 2.5 | ✅ | | experiments: [phase-06](experiments/phase-06-async.md); journal + checkpoint deferred |
-| 7 | Redis: cache, read model, rate limit, realtime | 1.5 | ⬜ | | |
+| 7 | Redis: cache, read model, rate limit, realtime | 1.5 | 🟨 | | code + tests done; TODO: 2 API instances behind Caddy in compose, experiments write-up |
 | 8 | Frontend | 3 | ⬜ | | |
 | 9 | Simulator & local experiments | 1.5 | ⬜ | | |
 | 10 | AWS foundations: Terraform, IAM, ECR | 1 | ⬜ | | |
@@ -58,6 +58,14 @@ Status: ⬜ not started · 🟨 in progress · ✅ done · ✂️ cut (see cut l
   email → Mailpit), reports (CSV streamed, PDF), maintenance (expire holds/bookings, event clock, devices offline,
   payment reconciliation, cleanup), ticker, documents via presigned PUT, archive → summary; moto server tests;
   outage experiments done — next: Phase 7
+- 2026-11-04 — Phase 7 (mostly) — token-bucket Lua rate limits (login per IP/email, booking per user, gate per
+  device; fail open; trusted-proxy X-Forwarded-For), cache-aside event config with DEL-after-commit, occupancy read
+  model (absolute values, rebuilt by maintenance), ws-ticket + WS endpoint, Redis pub/sub subscriber per instance,
+  workers publish after commit, zone-threshold alerts; 250 tests green — AWS: nothing running.
+  **NEXT SESSION:** (1) check CI (runs were stuck "queued" on GitHub's side); (2) Phase 7 leftovers: compose profile
+  with 2 API instances behind Caddy + live cross-instance demo, `docs/experiments/phase-07-redis.md`;
+  (3) Phase 8 frontend; (4) Phase 9 simulator; (5) Phases 10-15 Terraform/CI/CD written but NOT applied
+  (needs Damjan: `aws login` + explicit go-ahead). Journals/checkpoints for phases 1-7 deferred by Damjan.
 
 ## Spending log
 <!-- Monday check of Cost Explorer: date — month-to-date cost (before credits) — credits left -->

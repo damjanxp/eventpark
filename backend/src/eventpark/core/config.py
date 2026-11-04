@@ -72,6 +72,9 @@ class Settings(BaseSettings):
     queue_url_reports: str | None = None
     queue_url_maintenance: str | None = None
 
+    # Proxies in front of the API that append to X-Forwarded-For (0 locally; CloudFront + ALB on AWS = 2).
+    trusted_proxy_hops: int = Field(default=0, ge=0)
+
     # --- email ---
     smtp_url: str | None = None  # smtp://mailpit:1025 locally; unset = emails are logged, not sent
     mail_from: str = "EventPark <noreply@eventpark.dev>"

@@ -10,10 +10,13 @@ from datetime import datetime
 from typing import ClassVar
 from zoneinfo import ZoneInfo
 
+from redis.asyncio import Redis
+from redis.exceptions import RedisError
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from eventpark.cache import pubsub, read_model
 from eventpark.db.models import Event, HourlyStat, Venue
 from eventpark.messaging.schemas import Envelope
 from eventpark.workers.consumer import Handler
@@ -87,6 +90,61 @@ class StatsHandler(Handler):
         if increments:
             await add_to_hourly_stats(
                 session, event_id=msg.event_id, gate_id=gate_id, hour_start=hour_bucket(moment, tz), **increments
+            )
+
+    async def after_commit(self, msg: Envelope) -> None:
+        """Refresh the occupancy read model (absolute values from Postgres) and push it live to dashboards.
+
+        Idempotent by nature: running it twice publishes the same truth twice. Redis down -> logged, skipped; the
+        maintenance job rebuilds the read model within a minute.
+        """
+        if msg.event_id is None or msg.type not in (
+            "passage.completed",
+            "passage.authorized",
+            "passage.expired",
+            "passage.aborted",
+            "passage.rejected",
+        ):
+            return
+        async with self.sessions() as session:
+            zones = await read_model.refresh(self.redis, session, msg.event_id)
+        if msg.type in ("passage.completed", "passage.rejected"):
+            await pubsub.publish(self.redis, msg.event_id, {"type": "passage", "event": msg.type, **msg.data})
+        await pubsub.publish(
+            self.redis, msg.event_id, {"type": "occupancy", "event_id": str(msg.event_id), "zones": zones}
+        )
+        await check_thresholds(self.redis, msg.event_id, zones)
+
+
+ALERT_THRESHOLD = 0.9
+
+
+async def check_thresholds(redis: Redis, event_id: uuid.UUID, zones: dict[str, dict[str, int]]) -> None:
+    """Zone >= 90 % full (or full): alert staff once per zone and level (SET NX = only the first one gets through)."""
+    for code, z in zones.items():
+        drive_up_capacity = z.get("drive_up_capacity", 0)
+        if drive_up_capacity <= 0:
+            continue
+        ratio = z.get("drive_up_occupied", 0) / drive_up_capacity
+        level = "full" if ratio >= 1 else "90" if ratio >= ALERT_THRESHOLD else None
+        if level is None:
+            continue
+        try:
+            first = await redis.set(f"alert:zone:{event_id}:{code}:{level}", "1", nx=True, ex=3600)
+        except (RedisError, OSError):
+            return
+        if first:
+            await pubsub.publish(
+                redis,
+                event_id,
+                {
+                    "type": "alert",
+                    "alert": "zone_threshold",
+                    "zone": code,
+                    "level": level,
+                    "occupied": z.get("drive_up_occupied"),
+                    "capacity": drive_up_capacity,
+                },
             )
 
 

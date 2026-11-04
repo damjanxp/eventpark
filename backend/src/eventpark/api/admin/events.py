@@ -8,8 +8,9 @@ from typing import Annotated
 from fastapi import APIRouter, Query, status
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
-from eventpark.api.deps import EventManagerDep, SessionDep, StaffDep, utcnow
+from eventpark.api.deps import EventManagerDep, RedisDep, SessionDep, StaffDep, utcnow
 from eventpark.api.schemas import Page
+from eventpark.cache import event_config, read_model
 from eventpark.db.models import EventZone, Zone
 from eventpark.domain.events import EventAction, EventStatus
 from eventpark.services import events
@@ -161,7 +162,7 @@ async def get_event(event_id: uuid.UUID, _: StaffDep, session: SessionDep) -> Ev
 
 @router.patch("/{event_id}")
 async def update_event(
-    event_id: uuid.UUID, body: EventPatch, principal: EventManagerDep, session: SessionDep
+    event_id: uuid.UUID, body: EventPatch, principal: EventManagerDep, session: SessionDep, redis: RedisDep
 ) -> EventDetailOut:
     await events.update_event(
         session,
@@ -170,20 +171,22 @@ async def update_event(
         name=body.name,
         times=body.model_dump(exclude={"name"}),
     )
+    await event_config.invalidate(redis, event_id)  # after the commit: the next reader loads the new version
     return _detail_out(await events.get_event_detail(session, event_id))
 
 
 @router.put("/{event_id}/pricing")
 async def set_pricing(
-    event_id: uuid.UUID, body: PricingIn, principal: EventManagerDep, session: SessionDep
+    event_id: uuid.UUID, body: PricingIn, principal: EventManagerDep, session: SessionDep, redis: RedisDep
 ) -> PricingOut:
     pricing = await events.set_pricing(session, actor=principal.user_id, event_id=event_id, values=body.model_dump())
+    await event_config.invalidate(redis, event_id)
     return PricingOut.model_validate(pricing)
 
 
 @router.put("/{event_id}/zones")
 async def set_zones(
-    event_id: uuid.UUID, body: list[EventZoneIn], principal: EventManagerDep, session: SessionDep
+    event_id: uuid.UUID, body: list[EventZoneIn], principal: EventManagerDep, session: SessionDep, redis: RedisDep
 ) -> list[EventZoneOut]:
     rows = await events.set_zones(
         session,
@@ -191,6 +194,9 @@ async def set_zones(
         event_id=event_id,
         configs=[EventZoneConfig(**z.model_dump()) for z in body],
     )
+    await event_config.invalidate(redis, event_id)
+    async with session.begin():
+        await read_model.refresh(redis, session, event_id)  # capacities changed: the read model must follow
     return _zones_out(rows)
 
 
@@ -201,8 +207,11 @@ def _register_action(action: EventAction) -> None:
     POST /events/{id}/reports and answer them with a confusing 422.
     """
 
-    async def endpoint(event_id: uuid.UUID, principal: EventManagerDep, session: SessionDep) -> EventDetailOut:
+    async def endpoint(
+        event_id: uuid.UUID, principal: EventManagerDep, session: SessionDep, redis: RedisDep
+    ) -> EventDetailOut:
         await events.apply_action(session, actor=principal.user_id, event_id=event_id, action=action, now=utcnow())
+        await event_config.invalidate(redis, event_id)
         return _detail_out(await events.get_event_detail(session, event_id))
 
     endpoint.__name__ = f"event_{action.value.replace('-', '_')}"
@@ -217,3 +226,27 @@ def _register_action(action: EventAction) -> None:
 
 for _action in EventAction:
     _register_action(_action)
+
+
+class OccupancyOut(BaseModel):
+    event_id: uuid.UUID
+    source: str = Field(description="redis (read model) or postgres (fallback / rebuild)")
+    zones: dict[str, dict[str, int]]
+    totals: dict[str, int]
+
+
+@router.get("/{event_id}/occupancy")
+async def occupancy(event_id: uuid.UUID, _: StaffDep, session: SessionDep, redis: RedisDep) -> OccupancyOut:
+    """Live occupancy per zone from the Redis read model (Postgres if Redis is unavailable)."""
+    zones, source = await read_model.read(redis, session, event_id)
+    keys = (
+        "capacity",
+        "inside",
+        "entering",
+        "drive_up_occupied",
+        "prebook_held",
+        "available_drive_up",
+        "available_prebook",
+    )
+    totals = {k: sum(int(z.get(k, 0)) for z in zones.values()) for k in keys}
+    return OccupancyOut(event_id=event_id, source=source, zones=zones, totals=totals)

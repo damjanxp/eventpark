@@ -40,4 +40,4 @@ class Maintenance(Handler):
     async def side_effects(self, msg: Envelope) -> None:
         # The jobs commit their own small transactions and call the provider: they belong outside the dedupe tx.
         # A tick processed twice is harmless anyway (every job is idempotent).
-        await run_tick(self.sessions, self.provider, self.cfg, datetime.now(UTC))
+        await run_tick(self.sessions, self.provider, self.cfg, datetime.now(UTC), self.redis)

@@ -12,10 +12,20 @@ import uuid
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Cookie, Response, status
+from fastapi import APIRouter, Cookie, Request, Response, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from eventpark.api.deps import PrincipalDep, SessionDep, SettingsDep, require_roles, utcnow
+from eventpark.api.deps import (
+    LimiterDep,
+    PrincipalDep,
+    SessionDep,
+    SettingsDep,
+    client_ip,
+    enforce,
+    require_roles,
+    utcnow,
+)
+from eventpark.cache.rate_limit import LOGIN_PER_EMAIL, LOGIN_PER_IP
 from eventpark.core.config import Settings
 from eventpark.core.errors import NotFound, Unauthorized
 from eventpark.db.models import User
@@ -93,8 +103,16 @@ def build_auth_router(*, prefix: str, tag: str, allowed_roles: frozenset[Role], 
 
     @router.post("/auth/login")
     async def login(
-        body: LoginRequest, response: Response, session: SessionDep, settings: SettingsDep
+        body: LoginRequest,
+        request: Request,
+        response: Response,
+        session: SessionDep,
+        settings: SettingsDep,
+        limiter: LimiterDep,
     ) -> TokenResponse:
+        # Two buckets: per IP (one machine trying many accounts) and per email (many machines trying one account).
+        await enforce(limiter, LOGIN_PER_IP, client_ip(request))
+        await enforce(limiter, LOGIN_PER_EMAIL, body.email.lower())
         pair = await auth.login(
             session,
             email=body.email,

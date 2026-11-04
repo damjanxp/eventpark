@@ -12,10 +12,12 @@ from typing import Annotated
 
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from eventpark.cache.rate_limit import Limit, RateLimiter
 from eventpark.core.config import Settings
-from eventpark.core.errors import Forbidden, Unauthorized
+from eventpark.core.errors import Forbidden, RateLimited, Unauthorized
 from eventpark.core.security import InvalidTokenError, decode_access_token
 from eventpark.domain.roles import STAFF_ROLES, Role
 
@@ -31,7 +33,42 @@ async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
         yield session
 
 
+def get_redis(request: Request) -> Redis:
+    redis: Redis = request.app.state.redis
+    return redis
+
+
+def get_limiter(request: Request) -> RateLimiter:
+    limiter: RateLimiter = request.app.state.limiter
+    return limiter
+
+
 SettingsDep = Annotated[Settings, Depends(get_settings_dep)]
+RedisDep = Annotated[Redis, Depends(get_redis)]
+LimiterDep = Annotated[RateLimiter, Depends(get_limiter)]
+
+
+async def enforce(limiter: RateLimiter, limit: Limit, key: str) -> None:
+    decision = await limiter.hit(limit, key)
+    if not decision.allowed:
+        raise RateLimited("Too many requests, slow down.", retry_after=decision.retry_after_seconds)
+
+
+def client_ip(request: Request) -> str:
+    """The caller's IP, for per-IP rate limits.
+
+    X-Forwarded-For is a list every proxy APPENDS to: "<what the client claimed>, <client as seen by proxy 1>, ...".
+    The leftmost entries are typed by the client and can be faked; only entries added by OUR proxies are trustworthy.
+    With N trusted proxies in front of us (TRUSTED_PROXY_HOPS: 0 locally, CloudFront + ALB on AWS), the real client
+    is the N-th entry from the right.
+    """
+    hops: int = request.app.state.settings.trusted_proxy_hops
+    forwarded = [part.strip() for part in request.headers.get("x-forwarded-for", "").split(",") if part.strip()]
+    if hops and len(forwarded) >= hops:
+        return forwarded[-hops]
+    return request.client.host if request.client else "unknown"
+
+
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 

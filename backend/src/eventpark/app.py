@@ -5,6 +5,8 @@ That lets tests build an app with their own settings, and nothing happens at imp
 Run with:  uvicorn eventpark.app:create_app --factory
 """
 
+import asyncio
+import contextlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -12,7 +14,7 @@ import structlog
 from fastapi import FastAPI
 
 from eventpark.api import gate as gate_api
-from eventpark.api import health, public, webhooks
+from eventpark.api import health, public, webhooks, ws
 from eventpark.api.admin import events as admin_events
 from eventpark.api.admin import files as admin_files
 from eventpark.api.admin import users as admin_users
@@ -21,6 +23,8 @@ from eventpark.api.auth import admin_auth_router, public_auth_router
 from eventpark.api.errors import install_error_handlers
 from eventpark.api.middleware import RequestIdMiddleware
 from eventpark.cache.client import create_redis
+from eventpark.cache.pubsub import ConnectionManager, subscriber_loop
+from eventpark.cache.rate_limit import RateLimiter
 from eventpark.core.config import Settings, get_settings
 from eventpark.core.logging import configure_logging
 from eventpark.db.engine import create_engine
@@ -41,11 +45,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.engine = create_engine(settings)
         app.state.sessionmaker = create_sessionmaker(app.state.engine)
         app.state.redis = create_redis(settings)
+        app.state.limiter = RateLimiter(app.state.redis)
+        app.state.connections = ConnectionManager()
+        # Every instance subscribes to realtime updates and forwards them to its own WebSockets (cache/pubsub.py).
+        stop_subscriber = asyncio.Event()
+        subscriber = asyncio.create_task(subscriber_loop(app.state.redis, app.state.connections, stop=stop_subscriber))
         app.state.storage = Storage(settings)
         app.state.provider = PaymentProvider(settings.fakepay_url, terminal_timeout=settings.terminal_timeout_seconds)
         log.info("app.started")
         yield
-        # Shutdown: close the pools so Postgres/Redis don't keep half-open connections.
+        # Shutdown: stop the subscriber, close the pools so Postgres/Redis don't keep half-open connections.
+        stop_subscriber.set()
+        subscriber.cancel()  # don't wait for its 1 s poll to time out: shut down promptly
+        with contextlib.suppress(asyncio.CancelledError):
+            await subscriber
         await app.state.provider.aclose()
         await app.state.redis.aclose()
         await app.state.engine.dispose()
@@ -70,4 +83,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(gate_api.router)
     app.include_router(public.router)
     app.include_router(webhooks.router)
+    app.include_router(ws.router)
     return app

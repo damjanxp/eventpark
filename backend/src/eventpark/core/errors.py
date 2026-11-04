@@ -54,3 +54,15 @@ class Conflict(AppError):
     status = 409
     title = "Conflict"
     default_code = "CONFLICT"
+
+
+class RateLimited(AppError):
+    """429: too many requests; `retry_after` seconds until the next one would be allowed."""
+
+    status = 429
+    title = "Too many requests"
+    default_code = "RATE_LIMITED"
+
+    def __init__(self, detail: str, *, retry_after: int) -> None:
+        super().__init__(detail, extra={"retry_after": retry_after})
+        self.retry_after = retry_after

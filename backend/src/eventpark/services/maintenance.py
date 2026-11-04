@@ -12,9 +12,11 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 import structlog
+from redis.asyncio import Redis
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from eventpark.cache import read_model
 from eventpark.db.models import (
     Booking,
     Device,
@@ -54,6 +56,7 @@ class TickReport:
     devices_offline: int = 0
     payments_reconciled: int = 0
     rows_cleaned: int = 0
+    read_models_rebuilt: int = 0
     errors: list[str] = field(default_factory=list)
 
 
@@ -259,8 +262,29 @@ async def cleanup(sessions: async_sessionmaker[AsyncSession], now: datetime) -> 
     return int(outbox_rows.rowcount or 0) + int(processed.rowcount or 0)  # type: ignore[attr-defined]
 
 
+async def rebuild_read_models(sessions: async_sessionmaker[AsyncSession], redis: Redis | None) -> int:
+    """Self-healing: recompute the occupancy read model of every LIVE/ENDED event from Postgres.
+
+    If Redis was flushed, restarted, or a refresh was lost, the dashboard is correct again within one tick.
+    """
+    if redis is None:
+        return 0
+    async with sessions() as session:
+        ids = (
+            await session.scalars(select(Event.id).where(Event.status.in_([EventStatus.LIVE, EventStatus.ENDED])))
+        ).all()
+        for event_id in ids:
+            await read_model.refresh(redis, session, event_id)
+        await session.commit()
+    return len(ids)
+
+
 async def run_tick(
-    sessions: async_sessionmaker[AsyncSession], provider: PaymentProvider, cfg: GateSettings, now: datetime
+    sessions: async_sessionmaker[AsyncSession],
+    provider: PaymentProvider,
+    cfg: GateSettings,
+    now: datetime,
+    redis: Redis | None = None,
 ) -> TickReport:
     report = TickReport()
     jobs: dict[str, Callable[[], Awaitable[int]]] = {
@@ -270,6 +294,7 @@ async def run_tick(
         "devices_offline": lambda: mark_devices_offline(sessions, now),
         "payments_reconciled": lambda: reconcile_payments(sessions, provider, cfg, now),
         "rows_cleaned": lambda: cleanup(sessions, now),
+        "read_models_rebuilt": lambda: rebuild_read_models(sessions, redis),
     }
     for name, job in jobs.items():
         try:

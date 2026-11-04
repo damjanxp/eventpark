@@ -7,7 +7,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, Request, status
 from pydantic import BaseModel, Field
 
-from eventpark.api.deps import DriverDep, SessionDep, SettingsDep, utcnow
+from eventpark.api.deps import DriverDep, LimiterDep, RedisDep, SessionDep, SettingsDep, enforce, utcnow
+from eventpark.cache import event_config, read_model
+from eventpark.cache.rate_limit import BOOKING_PER_USER
+from eventpark.core.errors import NotFound
 from eventpark.db.models import Event
 from eventpark.domain.events import EventStatus
 from eventpark.domain.payments import BookingStatus
@@ -121,14 +124,40 @@ async def list_events(session: SessionDep) -> list[PublicEvent]:
 
 
 @router.get("/events/{event_id}")
-async def get_event(event_id: uuid.UUID, session: SessionDep) -> PublicEventDetail:
+async def get_event(event_id: uuid.UUID, session: SessionDep, redis: RedisDep) -> PublicEventDetail:
+    """Event + zones from the config cache, live availability from the occupancy read model (both Redis, with a
+    Postgres fallback): this page is hit by every driver browsing, so it must not cost a database round trip each."""
     now = utcnow()
-    event = await bookings.get_event(session, event_id)
-    zones = await bookings.availability(session, event_id)
-    return PublicEventDetail(
-        **_event_out(event, now).model_dump(),
-        zones=[ZoneOut(**z.__dict__) for z in zones],
+    config = await event_config.get_event_config(redis, session, event_id)
+    if config is None or config["status"] not in ("PUBLISHED", "LIVE"):
+        raise NotFound("Event not found.", code="EVENT_NOT_FOUND")
+    occupancy, _source = await read_model.read(redis, session, event_id)
+    zones = [
+        ZoneOut(
+            event_zone_id=z["event_zone_id"],
+            zone_code=z["zone_code"],
+            zone_name=z["zone_name"],
+            price_minor=z["prebook_price_minor"],
+            available=occupancy.get(z["zone_code"], {}).get("available_prebook", z["prebook_quota"]),
+            has_spaces=z["has_spaces"],
+        )
+        for z in config["zones"]
+        if z["prebook_quota"] > 0
+    ]
+    event = PublicEvent(
+        id=config["id"],
+        name=config["name"],
+        status=config["status"],
+        starts_at=config["starts_at"],
+        ends_at=config["ends_at"],
+        gates_open_at=config["gates_open_at"],
+        booking_opens_at=config["booking_opens_at"],
+        booking_closes_at=config["booking_closes_at"],
+        bookable_now=datetime.fromisoformat(config["booking_opens_at"])
+        <= now
+        < datetime.fromisoformat(config["booking_closes_at"]),
     )
+    return PublicEventDetail(**event.model_dump(), zones=zones)
 
 
 @router.get("/events/{event_id}/zones/{event_zone_id}/spaces")
@@ -145,9 +174,11 @@ async def create_booking(
     session: SessionDep,
     provider: ProviderDep,
     settings: SettingsDep,
+    limiter: LimiterDep,
     idempotency_key: Annotated[str | None, Header(max_length=64)] = None,
 ) -> BookingOut:
     """Hold a place (and VIP space) for 15 minutes and start checkout. Pay at `checkout_url`."""
+    await enforce(limiter, BOOKING_PER_USER, str(principal.user_id))
     view = await bookings.create_booking(
         session,
         provider,

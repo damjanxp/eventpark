@@ -21,10 +21,12 @@ from typing import Any, ClassVar
 
 import structlog
 from pydantic import ValidationError
+from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from eventpark.cache.client import create_redis
 from eventpark.core import aws
 from eventpark.core.config import Settings
 from eventpark.db.models import ProcessedMessage
@@ -43,6 +45,13 @@ class Handler:
 
     def __init__(self, sessions: async_sessionmaker[AsyncSession], settings: Settings) -> None:
         self.sessions, self.settings = sessions, settings
+        self._redis: Redis | None = None
+
+    @property
+    def redis(self) -> Redis:
+        if self._redis is None:
+            self._redis = create_redis(self.settings)
+        return self._redis
 
     def wants(self, msg: Envelope) -> bool:
         return True

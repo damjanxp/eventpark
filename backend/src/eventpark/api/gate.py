@@ -12,8 +12,9 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 
-from eventpark.api.deps import SessionDep, SettingsDep, utcnow
+from eventpark.api.deps import LimiterDep, SessionDep, SettingsDep, enforce, utcnow
 from eventpark.api.public import ProviderDep
+from eventpark.cache.rate_limit import GATE_PER_DEVICE
 from eventpark.core.errors import Unauthorized
 from eventpark.domain.tickets import PassageStatus, TicketStatus
 from eventpark.domain.venues import PrinterStatus
@@ -32,10 +33,15 @@ _device_header = APIKeyHeader(
 IdempotencyKey = Field(min_length=8, max_length=64, pattern=r"^[A-Za-z0-9._:-]+$")
 
 
-async def get_device(session: SessionDep, header: Annotated[str | None, Depends(_device_header)]) -> DeviceContext:
+async def get_device(
+    session: SessionDep, limiter: LimiterDep, header: Annotated[str | None, Depends(_device_header)]
+) -> DeviceContext:
     if not header or not header.startswith("Device "):
         raise Unauthorized("Missing device credentials.", code="NOT_AUTHENTICATED")
-    return await gate.authenticate_device(session, header.removeprefix("Device ").strip())
+    device = await gate.authenticate_device(session, header.removeprefix("Device ").strip())
+    # Per device: a lane stuck in a retry loop (bug, broken scanner) can't flood the API for everyone else.
+    await enforce(limiter, GATE_PER_DEVICE, str(device.device_id))
+    return device
 
 
 DeviceDep = Annotated[DeviceContext, Depends(get_device)]
