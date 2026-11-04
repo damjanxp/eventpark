@@ -159,6 +159,7 @@ make down / make reset          # stop (keep data) / stop and delete volumes
 make test / make test-fast      # all backend tests / only those that need no Docker
 make lint                       # what CI checks: ruff, ruff format, mypy
 make smoke                      # check the S3/SQS emulators (stack running)
+docker compose logs -f worker-entry outbox-relay   # watch the async side
 make lane GATE=N1               # drive one lane by keyboard (entry N1..S2, exit X1..X3), after make seed
 make seed                       # demo venue/users/events; device keys -> .devices.local.json (password: eventpark-demo-pass)
 # local stack

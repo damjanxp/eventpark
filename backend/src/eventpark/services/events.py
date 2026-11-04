@@ -6,13 +6,13 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from eventpark.core.errors import Conflict, NotFound, ValidationFailed
 from eventpark.db.errors import constraint_name
-from eventpark.db.models import Event, EventPricing, EventZone, Venue, Zone
+from eventpark.db.models import Event, EventPricing, EventZone, Ticket, Venue, Zone
 from eventpark.db.pagination import paginate
 from eventpark.domain.events import (
     EDITABLE_STATUSES,
@@ -22,7 +22,9 @@ from eventpark.domain.events import (
     TransitionError,
     transition,
 )
+from eventpark.domain.tickets import TicketStatus
 from eventpark.services import audit
+from eventpark.services.summaries import compute_summary
 
 _TIME_FIELDS = ("starts_at", "ends_at", "gates_open_at", "gates_close_at", "booking_opens_at", "booking_closes_at")
 
@@ -267,6 +269,14 @@ async def apply_action(
         if isinstance(result, TransitionError):
             raise Conflict(result.message, code=result.code)
         previous, event.status = event.status, result
+        if result is EventStatus.ARCHIVED:
+            # Everything is finished: passes never used become EXPIRED, and the history numbers are frozen.
+            await session.execute(
+                update(Ticket)
+                .where(Ticket.event_id == event_id, Ticket.status == TicketStatus.VALID)
+                .values(status=TicketStatus.EXPIRED)
+            )
+            await compute_summary(session, event_id)
         audit.record(
             session,
             actor_user_id=actor,

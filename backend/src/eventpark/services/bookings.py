@@ -126,7 +126,7 @@ async def free_spaces(
     ).all()
 
 
-async def release_expired_holds(session: AsyncSession, event_zone: EventZone, now: datetime) -> int:
+async def release_expired_holds(session: AsyncSession, event_zone: EventZone, now: datetime) -> list[uuid.UUID]:
     """Expire unpaid bookings of this zone whose 15 minutes are up, and give their places back.
 
     Caller holds the event_zone row lock, so the plain `-=` below is safe. Called lazily before taking a place (so a
@@ -151,7 +151,7 @@ async def release_expired_holds(session: AsyncSession, event_zone: EventZone, no
             .where(Payment.booking_id.in_(expired), Payment.status == PaymentStatus.PENDING)
             .values(status=PaymentStatus.FAILED, failure_reason="booking_expired")
         )
-    return len(expired)
+    return list(expired)
 
 
 async def _vehicle_id(session: AsyncSession, plate: str, user_id: uuid.UUID) -> uuid.UUID | None:

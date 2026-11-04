@@ -1,6 +1,6 @@
 # Progress
 
-**Active phase:** Phase 6 — Outbox, SQS, workers, S3
+**Active phase:** Phase 7 — Redis: cache, read model, rate limit, realtime
 **AWS dev environment:** ⛔ down   *(update whenever you run aws-up / aws-down)*
 
 | # | Phase | Est. days | Status | Journal | Notes |
@@ -11,7 +11,7 @@
 | 3 | Gate hot path & concurrency ⭐ | 3 | ✅ | | experiment: [phase-03-allocation](experiments/phase-03-allocation.md); journal + checkpoint deferred |
 | 4 | Gate controller (the Pi) | 1.5 | ✅ | | experiments: [phase-04](experiments/phase-04-gate-controller.md); journal + checkpoint deferred |
 | 5 | Payments & booking | 2 | ✅ | | journal + checkpoint deferred |
-| 6 | Outbox, SQS, workers, S3 | 2.5 | ⬜ | | |
+| 6 | Outbox, SQS, workers, S3 | 2.5 | ✅ | | experiments: [phase-06](experiments/phase-06-async.md); journal + checkpoint deferred |
 | 7 | Redis: cache, read model, rate limit, realtime | 1.5 | ⬜ | | |
 | 8 | Frontend | 3 | ⬜ | | |
 | 9 | Simulator & local experiments | 1.5 | ⬜ | | |
@@ -53,6 +53,11 @@ Status: ⬜ not started · 🟨 in progress · ✅ done · ✂️ cut (see cut l
   test tokens, idempotency), bookings/payments/webhook_events tables, exit/pay (commit PENDING → call → record;
   timeout = UNKNOWN), booking holds with lazy expiry, VIP partial unique index, webhook verify + dedupe, payment state
   machine, live e2e booking + tok_slow exit verified; httpx moved to runtime deps (caught by the container) — next: Phase 6
+- 2026-11-04 — Phase 6 — outbox relay (SKIP LOCKED, batches), idempotent consumer (dedupe in the same tx, side
+  effects outside, visibility extension, SIGTERM), workers entry/exit (hourly_stats in venue tz), notifications (QR → S3,
+  email → Mailpit), reports (CSV streamed, PDF), maintenance (expire holds/bookings, event clock, devices offline,
+  payment reconciliation, cleanup), ticker, documents via presigned PUT, archive → summary; moto server tests;
+  outage experiments done — next: Phase 7
 
 ## Spending log
 <!-- Monday check of Cost Explorer: date — month-to-date cost (before credits) — credits left -->

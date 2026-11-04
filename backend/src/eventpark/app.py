@@ -14,6 +14,7 @@ from fastapi import FastAPI
 from eventpark.api import gate as gate_api
 from eventpark.api import health, public, webhooks
 from eventpark.api.admin import events as admin_events
+from eventpark.api.admin import files as admin_files
 from eventpark.api.admin import users as admin_users
 from eventpark.api.admin import venues as admin_venues
 from eventpark.api.auth import admin_auth_router, public_auth_router
@@ -25,6 +26,7 @@ from eventpark.core.logging import configure_logging
 from eventpark.db.engine import create_engine
 from eventpark.db.session import create_sessionmaker
 from eventpark.services.provider import PaymentProvider
+from eventpark.storage.s3 import Storage
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -39,6 +41,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.engine = create_engine(settings)
         app.state.sessionmaker = create_sessionmaker(app.state.engine)
         app.state.redis = create_redis(settings)
+        app.state.storage = Storage(settings)
         app.state.provider = PaymentProvider(settings.fakepay_url, terminal_timeout=settings.terminal_timeout_seconds)
         log.info("app.started")
         yield
@@ -63,6 +66,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(admin_users.router)
     app.include_router(admin_venues.router)
     app.include_router(admin_events.router)
+    app.include_router(admin_files.router)
     app.include_router(gate_api.router)
     app.include_router(public.router)
     app.include_router(webhooks.router)

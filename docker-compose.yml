@@ -32,6 +32,12 @@ x-backend-env: &backend-env
   AWS_ENDPOINT_URL_SQS: http://elasticmq:9324
   S3_PUBLIC_ENDPOINT_URL: http://localhost:8333  # what your browser can reach, used to sign URLs (§14 gotcha)
   BUCKET_FILES: ${BUCKET_FILES:-eventpark-files}
+  QUEUE_URL_ENTRY_EVENTS: http://elasticmq:9324/000000000000/entry-events
+  QUEUE_URL_EXIT_EVENTS: http://elasticmq:9324/000000000000/exit-events
+  QUEUE_URL_NOTIFICATIONS: http://elasticmq:9324/000000000000/notifications
+  QUEUE_URL_REPORTS: http://elasticmq:9324/000000000000/reports
+  QUEUE_URL_MAINTENANCE: http://elasticmq:9324/000000000000/maintenance
+  SMTP_URL: smtp://mailpit:1025  # every email lands in the Mailpit inbox: http://localhost:8025
 
 services:
   postgres:
@@ -180,6 +186,104 @@ services:
       FAKEPAY_DUPLICATE_WEBHOOK_RATE: ${FAKEPAY_DUPLICATE_WEBHOOK_RATE:-0.1}  # duplicates on purpose: we must dedupe
     ports:
       - "127.0.0.1:8100:8000"
+
+  # --- async backbone: same image as the api, different command (ADR-001) ---
+  outbox-relay:
+    image: eventpark-backend:local
+    command: ["python", "-m", "eventpark.relay"]
+    environment:
+      <<: *backend-env
+      SERVICE_NAME: outbox-relay
+    volumes:
+      - ./backend/src:/app/src:ro
+    healthcheck:
+      disable: true  # no HTTP port; a stuck relay shows up as growing outbox lag (Phase 14 alarm)
+    restart: unless-stopped
+    depends_on: &worker-deps
+      init:
+        condition: service_completed_successfully
+      elasticmq:
+        condition: service_healthy
+
+  worker-entry:
+    image: eventpark-backend:local
+    command: ["python", "-m", "eventpark.workers", "entry"]
+    environment:
+      <<: *backend-env
+      SERVICE_NAME: worker-entry
+    volumes:
+      - ./backend/src:/app/src:ro
+    healthcheck:
+      disable: true
+    restart: unless-stopped
+    depends_on: *worker-deps
+
+  worker-exit:
+    image: eventpark-backend:local
+    command: ["python", "-m", "eventpark.workers", "exit"]
+    environment:
+      <<: *backend-env
+      SERVICE_NAME: worker-exit
+    volumes:
+      - ./backend/src:/app/src:ro
+    healthcheck:
+      disable: true
+    restart: unless-stopped
+    depends_on: *worker-deps
+
+  worker-notifications:
+    image: eventpark-backend:local
+    command: ["python", "-m", "eventpark.workers", "notifications"]
+    environment:
+      <<: *backend-env
+      SERVICE_NAME: worker-notifications
+    volumes:
+      - ./backend/src:/app/src:ro
+    healthcheck:
+      disable: true
+    restart: unless-stopped
+    depends_on: *worker-deps
+
+  worker-reports:
+    image: eventpark-backend:local
+    command: ["python", "-m", "eventpark.workers", "reports"]
+    environment:
+      <<: *backend-env
+      SERVICE_NAME: worker-reports
+    volumes:
+      - ./backend/src:/app/src:ro
+    healthcheck:
+      disable: true
+    restart: unless-stopped
+    depends_on: *worker-deps
+
+  worker-maintenance:
+    image: eventpark-backend:local
+    command: ["python", "-m", "eventpark.workers", "maintenance"]
+    environment:
+      <<: *backend-env
+      SERVICE_NAME: worker-maintenance
+    volumes:
+      - ./backend/src:/app/src:ro
+    healthcheck:
+      disable: true
+    restart: unless-stopped
+    depends_on: *worker-deps
+
+  ticker:
+    # Local stand-in for EventBridge Scheduler: one "tick" per minute into the maintenance queue.
+    image: eventpark-backend:local
+    command: ["python", "-m", "eventpark.ticker"]
+    environment:
+      <<: *backend-env
+      SERVICE_NAME: ticker
+      TICK_SECONDS: ${TICK_SECONDS:-60}
+    volumes:
+      - ./backend/src:/app/src:ro
+    healthcheck:
+      disable: true
+    restart: unless-stopped
+    depends_on: *worker-deps
 
 volumes:
   postgres-data:

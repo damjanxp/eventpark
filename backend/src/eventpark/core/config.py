@@ -58,6 +58,30 @@ class Settings(BaseSettings):
     terminal_timeout_seconds: float = Field(default=5.0, gt=0)  # exit-lane card charge: never wait longer
     booking_hold_minutes: int = Field(default=15, gt=0)
 
+    # --- AWS (S3, SQS) ---
+    # Endpoints are NOT settings here: boto3 reads AWS_ENDPOINT_URL_S3 / AWS_ENDPOINT_URL_SQS by itself. Locally they
+    # point at the emulators; on AWS they're simply not set. Same code, different config (CLAUDE.md §3).
+    aws_region: str = "eu-central-1"
+    bucket_files: str = "eventpark-files"
+    # Presigned URLs embed the host in their signature: sign with the address the BROWSER uses (docs/02 §14 gotcha).
+    s3_public_endpoint_url: str | None = None
+    # Queue URLs (Terraform outputs on AWS). Only the relay and workers need them, so they're optional for the API.
+    queue_url_entry_events: str | None = None
+    queue_url_exit_events: str | None = None
+    queue_url_notifications: str | None = None
+    queue_url_reports: str | None = None
+    queue_url_maintenance: str | None = None
+
+    # --- email ---
+    smtp_url: str | None = None  # smtp://mailpit:1025 locally; unset = emails are logged, not sent
+    mail_from: str = "EventPark <noreply@eventpark.dev>"
+
+    def queue_url(self, name: str) -> str:
+        url = getattr(self, f"queue_url_{name.replace('-', '_')}", None)
+        if not url:
+            raise RuntimeError(f"QUEUE_URL_{name.replace('-', '_').upper()} is not configured")
+        return str(url)
+
     @property
     def access_token_ttl(self) -> timedelta:
         return timedelta(seconds=self.access_token_ttl_seconds)

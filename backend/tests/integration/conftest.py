@@ -23,6 +23,8 @@ from eventpark.core.security import create_access_token, hash_password
 from eventpark.db.models import User
 from eventpark.domain.roles import Role
 
+from .aws_fixtures import aws_env, moto_server  # noqa: F401 (fixtures used by test modules)
+
 TEST_JWT_SECRET = "test-jwt-secret-0123456789abcdef0123456789"
 TEST_WEBHOOK_SECRET = "whsec_test_0123456789"
 ALEMBIC_INI = Path(__file__).parents[2] / "alembic.ini"

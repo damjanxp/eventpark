@@ -194,10 +194,26 @@ async def set_zones(
     return _zones_out(rows)
 
 
-@router.post("/{event_id}/{action}")
-async def apply_action(
-    event_id: uuid.UUID, action: EventAction, principal: EventManagerDep, session: SessionDep
-) -> EventDetailOut:
-    """Lifecycle: publish | go-live | end | archive | cancel (docs/01-product-and-domain.md §4)."""
-    await events.apply_action(session, actor=principal.user_id, event_id=event_id, action=action, now=utcnow())
-    return _detail_out(await events.get_event_detail(session, event_id))
+def _register_action(action: EventAction) -> None:
+    """One explicit route per lifecycle action (POST /events/{id}/publish, .../go-live, ...).
+
+    Explicit routes instead of a catch-all `/{event_id}/{action}`: a catch-all would also swallow other routes like
+    POST /events/{id}/reports and answer them with a confusing 422.
+    """
+
+    async def endpoint(event_id: uuid.UUID, principal: EventManagerDep, session: SessionDep) -> EventDetailOut:
+        await events.apply_action(session, actor=principal.user_id, event_id=event_id, action=action, now=utcnow())
+        return _detail_out(await events.get_event_detail(session, event_id))
+
+    endpoint.__name__ = f"event_{action.value.replace('-', '_')}"
+    router.add_api_route(
+        f"/{{event_id}}/{action.value}",
+        endpoint,
+        methods=["POST"],
+        summary=f"Lifecycle: {action.value}",
+        description="See docs/01-product-and-domain.md §4 for the allowed transitions.",
+    )
+
+
+for _action in EventAction:
+    _register_action(_action)

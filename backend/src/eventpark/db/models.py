@@ -503,3 +503,93 @@ class WebhookEvent(Base):
     provider_event_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     received_at: Mapped[datetime] = mapped_column(server_default=func.now())
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB)
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Async processing, statistics, files (Phase 6)
+# ---------------------------------------------------------------------------------------------------------------------
+
+
+class ProcessedMessage(Base):
+    """'Consumer X has applied message Y.' Inserted in the SAME transaction as the consumer's database effects, so
+    a message delivered twice (SQS is at-least-once) changes the database once."""
+
+    __tablename__ = "processed_messages"
+
+    consumer: Mapped[str] = mapped_column(String(64), primary_key=True)
+    message_id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    processed_at: Mapped[datetime] = mapped_column(server_default=func.now(), index=True)
+
+
+class HourlyStat(Base):
+    """Per event, gate and hour (venue time zone): built by the entry/exit workers from passage messages."""
+
+    __tablename__ = "hourly_stats"
+
+    event_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"), primary_key=True)
+    gate_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("gates.id", ondelete="CASCADE"), primary_key=True)
+    hour_start: Mapped[datetime] = mapped_column(primary_key=True)
+    entries: Mapped[int] = mapped_column(Integer, server_default="0")
+    exits: Mapped[int] = mapped_column(Integer, server_default="0")
+    rejections: Mapped[int] = mapped_column(Integer, server_default="0")
+    revenue_minor: Mapped[int] = mapped_column(BigInteger, server_default="0")
+    released_unpaid_minor: Mapped[int] = mapped_column(BigInteger, server_default="0")
+    decision_ms_sum: Mapped[int] = mapped_column(BigInteger, server_default="0")
+    decision_count: Mapped[int] = mapped_column(Integer, server_default="0")
+
+
+class EventSummary(Base):
+    """Final numbers of a past event, computed once at archive time (history page)."""
+
+    __tablename__ = "event_summaries"
+
+    event_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"), primary_key=True)
+    peak_occupancy: Mapped[int] = mapped_column(Integer)
+    peak_at: Mapped[datetime | None]
+    total_entries: Mapped[int] = mapped_column(Integer)
+    total_exits: Mapped[int] = mapped_column(Integer)
+    revenue_minor: Mapped[int] = mapped_column(BigInteger)
+    avg_stay_minutes: Mapped[int | None] = mapped_column(Integer)
+    busiest_hour: Mapped[datetime | None]
+    rejection_rate: Mapped[float] = mapped_column()  # a ratio for display, not money
+    computed_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class Report(Base):
+    __tablename__ = "reports"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    event_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(8))
+    status: Mapped[str] = mapped_column(String(16), server_default="QUEUED")
+    s3_key: Mapped[str | None] = mapped_column(Text)
+    requested_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at()
+    completed_at: Mapped[datetime | None]
+
+    __table_args__ = (
+        CheckConstraint("kind IN ('CSV', 'PDF')", name="kind_valid"),
+        CheckConstraint("status IN ('QUEUED', 'RUNNING', 'READY', 'FAILED')", name="status_valid"),
+    )
+
+
+class Document(Base):
+    """Metadata of a file the browser uploaded straight to S3 (the bytes never pass through the API)."""
+
+    __tablename__ = "documents"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    event_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"), index=True)
+    filename: Mapped[str] = mapped_column(Text)
+    content_type: Mapped[str] = mapped_column(String(100))
+    size_bytes: Mapped[int] = mapped_column(BigInteger)
+    s3_key: Mapped[str] = mapped_column(Text, unique=True)
+    status: Mapped[str] = mapped_column(String(16), server_default="PENDING")
+    uploaded_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = created_at()
+
+    __table_args__ = (
+        CheckConstraint("status IN ('PENDING', 'READY')", name="status_valid"),
+        CheckConstraint("size_bytes > 0", name="size_positive"),
+    )
