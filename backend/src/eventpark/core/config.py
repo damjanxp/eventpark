@@ -42,6 +42,12 @@ class Settings(BaseSettings):
     # Secure cookies are only sent over HTTPS. Browsers treat http://localhost as secure too, so this stays on.
     auth_cookie_secure: bool = True
 
+    # --- gate hot path ---
+    # ENTERING/EXITING are temporary holds: if the car doesn't pass the loop within this time, the hold is released.
+    gate_hold_seconds: int = Field(default=60, gt=0)
+    # How long a PAYMENT_REQUIRED exit waits for the card before the passage expires.
+    payment_pending_seconds: int = Field(default=300, gt=0)
+
     @property
     def access_token_ttl(self) -> timedelta:
         return timedelta(seconds=self.access_token_ttl_seconds)

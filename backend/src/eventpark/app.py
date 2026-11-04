@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 import structlog
 from fastapi import FastAPI
 
+from eventpark.api import gate as gate_api
 from eventpark.api import health
 from eventpark.api.admin import events as admin_events
 from eventpark.api.admin import users as admin_users
@@ -59,4 +60,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(admin_users.router)
     app.include_router(admin_venues.router)
     app.include_router(admin_events.router)
+    app.include_router(gate_api.router)
     return app

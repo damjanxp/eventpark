@@ -69,6 +69,9 @@ testpaths = ["tests"]
 markers = [
     "integration: needs Docker (starts real Postgres/Redis containers)",
     "redis_down: test_readyz only: point Redis at a closed port",
+    "experiment: measurements, not pass/fail checks (run with: pytest -m experiment -s)",
 ]
+# Experiments run only when asked for; plain `pytest` (and CI) skips them.
+addopts = "-m 'not experiment'"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"

@@ -184,3 +184,15 @@ number. Superseded decisions stay, marked *Superseded by ADR-xxx*. When you wond
   leak, but adds key management; not needed for random secrets).
 - **Consequences:** device authentication is one indexed lookup + one SHA-256 (microseconds), no Redis needed.
   A stolen `devices` table doesn't reveal usable keys. Rotation = new key, old one invalid immediately.
+
+### ADR-025 — At most one LIVE event per venue (partial unique index)
+- **Context:** a drive-up driver presses the ticket button at a lane. The request carries no ticket, only the
+  device, so the server must map *gate → venue → the event that's running*. If two events at the same venue were
+  `LIVE` at once (e.g. a matinee overlapping an evening show), that mapping would be ambiguous.
+- **Decision:** `CREATE UNIQUE INDEX uq_events_one_live_per_venue ON events(venue_id) WHERE status = 'LIVE'`.
+  Going live while another event at the venue is still `LIVE` fails (the earlier one must be `ENDED` first;
+  `ENDED` events still accept exits).
+- **Alternatives:** pick "the latest" LIVE event in code (silent wrong answers); put the event id on the device
+  (manual reconfiguration before every event); per-zone events (much more complex model).
+- **Consequences:** back-to-back events at one venue need the first one ended (manually or by the maintenance job at
+  `gates_close_at`) before the second goes live. Pre-booked tickets are unaffected: their event is on the ticket.

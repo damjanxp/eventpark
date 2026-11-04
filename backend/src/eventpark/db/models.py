@@ -34,6 +34,7 @@ from eventpark.core.ids import uuid7
 from eventpark.db.base import Base
 from eventpark.domain.events import EventStatus
 from eventpark.domain.roles import Role
+from eventpark.domain.tickets import PassageStatus, RejectReason, TicketStatus, TicketType
 from eventpark.domain.venues import DeviceCommandType, DeviceStatus, GateDirection, PrinterStatus, SpaceKind
 
 
@@ -250,6 +251,8 @@ class Event(Base):
         CheckConstraint("booking_opens_at < booking_closes_at", name="booking_times_ordered"),
         Index("ix_events_venue_id_starts_at", "venue_id", "starts_at"),
         Index("ix_events_status", "status"),
+        # At most one LIVE event per venue: a drive-up driver pressing the button must map to exactly one event.
+        Index("uq_events_one_live_per_venue", "venue_id", unique=True, postgresql_where=text("status = 'LIVE'")),
     )
 
 
@@ -305,4 +308,123 @@ class EventZone(Base):
         CheckConstraint("prebook_held BETWEEN 0 AND prebook_quota", name="prebook_held_within_quota"),
         CheckConstraint("prebook_inside BETWEEN 0 AND prebook_held", name="prebook_inside_within_held"),
         CheckConstraint("drive_up_occupied BETWEEN 0 AND capacity - prebook_quota", name="drive_up_within_capacity"),
+    )
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Vehicles, tickets, passages (the gate hot path, Phase 3)
+# ---------------------------------------------------------------------------------------------------------------------
+
+
+class Vehicle(Base):
+    __tablename__ = "vehicles"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    plate_normalized: Mapped[str] = mapped_column(String(16), unique=True)  # "BG123AB": upper-case, no spaces/dashes
+    plate_display: Mapped[str] = mapped_column(String(32))  # as the driver typed it: "BG 123-AB"
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+
+class Ticket(Base):
+    """The right to be in the car park for one event: a pre-booked pass (QR) or a printed drive-up ticket."""
+
+    __tablename__ = "tickets"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    event_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("events.id", ondelete="RESTRICT"))
+    type: Mapped[TicketType] = mapped_column(enum_column(TicketType, "type"))
+    code: Mapped[str] = mapped_column(String(40), unique=True)  # opaque EP1-..., the only thing in the QR code
+    booking_id: Mapped[uuid.UUID | None] = mapped_column(unique=True)  # FK added with the bookings table (Phase 5)
+    event_zone_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("event_zones.id", ondelete="RESTRICT"))
+    space_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("spaces.id", ondelete="RESTRICT"))
+    vehicle_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("vehicles.id", ondelete="SET NULL"))
+    status: Mapped[TicketStatus] = mapped_column(enum_column(TicketStatus, "status"))
+    hold_expires_at: Mapped[datetime | None]  # ENTERING/EXITING are temporary holds (60 s)
+    entered_at: Mapped[datetime | None]
+    exited_at: Mapped[datetime | None]
+    paid_minor: Mapped[int] = mapped_column(BigInteger, server_default="0")
+    paid_at: Mapped[datetime | None]
+    issued_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    issued_by_device_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("devices.id", ondelete="SET NULL"))
+    qr_s3_key: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        Index("ix_tickets_event_id_status", "event_id", "status"),
+        # Invariant 3: a numbered space belongs to at most one active ticket per event.
+        Index(
+            "uq_tickets_active_space",
+            "event_id",
+            "space_id",
+            unique=True,
+            postgresql_where=text("space_id IS NOT NULL AND status NOT IN ('VOID', 'EXPIRED')"),
+        ),
+        CheckConstraint("paid_minor >= 0", name="paid_not_negative"),
+        CheckConstraint(
+            "(status IN ('ENTERING', 'EXITING')) = (hold_expires_at IS NOT NULL)", name="hold_only_while_moving"
+        ),
+        CheckConstraint(
+            "status NOT IN ('INSIDE', 'EXITING', 'EXITED') OR entered_at IS NOT NULL", name="inside_has_entry"
+        ),
+    )
+
+
+class Passage(Base):
+    """One attempt to go through one gate. Two-phase: AUTHORIZED (barrier opens) -> COMPLETED (car passed the loop).
+
+    `idempotency_key` is the device's scan_id/request_id: a retried request finds this row and gets `response` back,
+    byte for byte, instead of a second passage (and a second place taken).
+    """
+
+    __tablename__ = "passages"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    event_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("events.id", ondelete="RESTRICT"))
+    gate_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("gates.id", ondelete="RESTRICT"))
+    device_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("devices.id", ondelete="SET NULL"))
+    ticket_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("tickets.id", ondelete="RESTRICT"), index=True)
+    direction: Mapped[GateDirection] = mapped_column(enum_column(GateDirection, "direction"))
+    status: Mapped[PassageStatus] = mapped_column(enum_column(PassageStatus, "status"))
+    reject_reason: Mapped[RejectReason | None] = mapped_column(enum_column(RejectReason, "reject_reason"))
+    amount_due_minor: Mapped[int | None] = mapped_column(BigInteger)
+    idempotency_key: Mapped[str] = mapped_column(String(64), unique=True)
+    response: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    manual: Mapped[bool] = mapped_column(server_default=text("false"))
+    operator_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    authorized_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    deadline_at: Mapped[datetime | None]
+    completed_at: Mapped[datetime | None]
+    decision_ms: Mapped[int | None] = mapped_column(Integer)
+
+    __table_args__ = (
+        Index("ix_passages_event_id_completed_at", "event_id", "completed_at"),
+        # The maintenance job asks "which holds have expired?" every minute: only open passages are indexed.
+        Index(
+            "ix_passages_open_deadline",
+            "status",
+            "deadline_at",
+            postgresql_where=text("status IN ('AUTHORIZED', 'PENDING_PAYMENT')"),
+        ),
+        CheckConstraint("(status = 'REJECTED') = (reject_reason IS NOT NULL)", name="reason_only_when_rejected"),
+    )
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Messaging: transactional outbox (filled in the same transaction as the change; published by the relay, Phase 6)
+# ---------------------------------------------------------------------------------------------------------------------
+
+
+class OutboxMessage(Base):
+    __tablename__ = "outbox"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    message_id: Mapped[uuid.UUID] = mapped_column(unique=True)
+    type: Mapped[str] = mapped_column(Text)
+    routing_key: Mapped[str] = mapped_column(Text)  # which queue: entry-events, exit-events, notifications, ...
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB)  # the full message envelope (docs/02-architecture.md §6)
+    created_at: Mapped[datetime] = created_at()
+    published_at: Mapped[datetime | None]
+
+    __table_args__ = (
+        # The relay polls "oldest unpublished first": a partial index over only the unpublished rows stays tiny.
+        Index("ix_outbox_unpublished", "id", postgresql_where=text("published_at IS NULL")),
     )
