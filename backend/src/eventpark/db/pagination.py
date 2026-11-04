@@ -37,7 +37,7 @@ def decode_cursor(cursor: str) -> uuid.UUID:
 
 async def paginate[T](
     session: AsyncSession,
-    query: Select[tuple[T]],
+    query: Select[T],
     id_column: InstrumentedAttribute[uuid.UUID],
     *,
     cursor: str | None,

@@ -139,3 +139,28 @@ def test_refresh_token_is_random_and_only_its_hash_is_stored() -> None:
     assert len(token) >= 43  # 32 random bytes, base64url
     assert token_hash == hash_refresh_token(token)  # deterministic: we can look the row up by hash
     assert token not in token_hash
+
+
+# --- device API keys ---
+
+
+def test_device_key_round_trip() -> None:
+    from eventpark.core.security import device_api_key_matches, new_device_api_key, parse_device_api_key
+
+    key, prefix, key_hash = new_device_api_key()
+
+    assert key.startswith(f"epd_{prefix}_")
+    assert parse_device_api_key(key) == prefix
+    assert device_api_key_matches(key, key_hash)
+    assert not device_api_key_matches(key + "x", key_hash)
+    assert key not in key_hash
+
+
+@pytest.mark.parametrize(
+    "bad", ["", "epd", "epd__secret", "xyz_0123456789ab_secret", "epd_short_secret", "epd_0123456789ab_"]
+)
+def test_malformed_device_keys_are_rejected(bad: str) -> None:
+    from eventpark.core.security import InvalidDeviceKeyError, parse_device_api_key
+
+    with pytest.raises(InvalidDeviceKeyError):
+        parse_device_api_key(bad)

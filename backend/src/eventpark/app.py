@@ -12,6 +12,9 @@ import structlog
 from fastapi import FastAPI
 
 from eventpark.api import health
+from eventpark.api.admin import events as admin_events
+from eventpark.api.admin import users as admin_users
+from eventpark.api.admin import venues as admin_venues
 from eventpark.api.auth import admin_auth_router, public_auth_router
 from eventpark.api.errors import install_error_handlers
 from eventpark.api.middleware import RequestIdMiddleware
@@ -53,4 +56,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health.router)
     app.include_router(admin_auth_router)
     app.include_router(public_auth_router)
+    app.include_router(admin_users.router)
+    app.include_router(admin_venues.router)
+    app.include_router(admin_events.router)
     return app

@@ -5,6 +5,7 @@ cryptography. Time is passed in (`now`) instead of read from the clock, so tests
 """
 
 import hashlib
+import hmac
 import secrets
 import uuid
 from dataclasses import dataclass
@@ -120,3 +121,39 @@ def new_refresh_token() -> tuple[str, str]:
 
 def hash_refresh_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Device API keys: epd_<prefix>_<secret>, stored as SHA-256 (ADR-024)
+# ---------------------------------------------------------------------------------------------------------------------
+# The prefix is public (it identifies the row, like a username); the secret is 256 random bits. Like refresh tokens,
+# a random secret can't be guessed, so a fast hash is enough, and it keeps argon2's ~50 ms / 64 MiB off the gate
+# hot path. We compare with hmac.compare_digest so the comparison time doesn't leak how many characters matched.
+DEVICE_KEY_PREFIX = "epd"
+
+
+class InvalidDeviceKeyError(Exception):
+    pass
+
+
+def new_device_api_key() -> tuple[str, str, str]:
+    """Returns (full key shown once to the admin, public prefix for lookup, hash for the database)."""
+    prefix = secrets.token_hex(6)
+    key = f"{DEVICE_KEY_PREFIX}_{prefix}_{secrets.token_urlsafe(32)}"
+    return key, prefix, hash_device_api_key(key)
+
+
+def parse_device_api_key(key: str) -> str:
+    """Returns the prefix, or raises InvalidDeviceKeyError if the key doesn't have the expected shape."""
+    parts = key.split("_", 2)  # maxsplit=2: the secret part may itself contain "_"
+    if len(parts) != 3 or parts[0] != DEVICE_KEY_PREFIX or len(parts[1]) != 12 or not parts[2]:
+        raise InvalidDeviceKeyError("malformed device key")
+    return parts[1]
+
+
+def hash_device_api_key(key: str) -> str:
+    return hashlib.sha256(key.encode()).hexdigest()
+
+
+def device_api_key_matches(key: str, stored_hash: str) -> bool:
+    return hmac.compare_digest(hash_device_api_key(key), stored_hash)
