@@ -13,6 +13,7 @@ dependencies = [
     "asyncpg>=0.32.0",
     "boto3>=1.43.120",
     "fastapi>=0.142.2",
+    "httpx>=0.28.1",
     "pydantic-settings>=2.15.0",
     "pydantic[email]>=2.13.5",
     "pyjwt>=2.15.1",
@@ -29,10 +30,10 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "asgi-lifespan>=2.1.0",
-    "httpx>=0.28.1",
     "mypy>=2.4.0",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
+    "respx>=0.23.1",
     "ruff>=0.16.10",
     "testcontainers>=4.15.0",
 ]

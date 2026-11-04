@@ -36,6 +36,7 @@ def database_url() -> Iterator[str]:
         mp.setenv("DATABASE_URL", url)
         mp.setenv("REDIS_URL", "redis://127.0.0.1:1/0")  # required by Settings, unused by migrations
         mp.setenv("JWT_SECRET", "test-jwt-secret-0123456789abcdef0123456789")
+        mp.setenv("FAKEPAY_WEBHOOK_SECRET", "whsec_test_0123456789")
         mp.setenv("LOG_FORMAT", "json")
         get_settings.cache_clear()
         yield url

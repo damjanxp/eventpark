@@ -120,7 +120,7 @@ How to work with him:
 │   ├── migrations/            # Alembic
 │   └── tests/                 # unit / integration / concurrency
 ├── gate-controller/           # Python edge-device service (the "Raspberry Pi"): package gatectl
-├── fakepay/                   # simulated payment provider (FastAPI)
+├── fakepay/                   # simulated payment provider (FastAPI): intents, checkout, signed webhooks, terminal
 ├── simulator/                 # traffic simulator + invariant checker
 ├── frontend/                  # React + TS + Vite: dashboard, operator console, booking site
 ├── infra/

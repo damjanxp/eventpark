@@ -74,6 +74,29 @@ jobs:
       - name: Tests (API mocked with respx)
         run: uv run pytest
 
+  fakepay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: fakepay
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.3.2
+        with:
+          version: "0.12.23"
+          enable-cache: true
+
+      - name: Install dependencies (exactly as locked)
+        run: uv sync --locked
+
+      - name: Lint, format, types (mypy strict)
+        run: uv run ruff check . && uv run ruff format --check . && uv run mypy
+
+      - name: Tests
+        run: uv run pytest
+
   stack:
     runs-on: ubuntu-24.04
     timeout-minutes: 15

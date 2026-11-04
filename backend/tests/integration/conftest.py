@@ -24,6 +24,7 @@ from eventpark.db.models import User
 from eventpark.domain.roles import Role
 
 TEST_JWT_SECRET = "test-jwt-secret-0123456789abcdef0123456789"
+TEST_WEBHOOK_SECRET = "whsec_test_0123456789"
 ALEMBIC_INI = Path(__file__).parents[2] / "alembic.ini"
 
 
@@ -35,6 +36,7 @@ def shared_postgres() -> Iterator[PostgresContainer]:
             mp.setenv("DATABASE_URL", url)
             mp.setenv("REDIS_URL", "redis://127.0.0.1:1/0")
             mp.setenv("JWT_SECRET", TEST_JWT_SECRET)
+            mp.setenv("FAKEPAY_WEBHOOK_SECRET", TEST_WEBHOOK_SECRET)
             mp.setenv("LOG_FORMAT", "json")
             get_settings.cache_clear()
             command.upgrade(Config(str(ALEMBIC_INI)), "head")
@@ -76,6 +78,8 @@ async def settings(shared_postgres: PostgresContainer, shared_valkey: RedisConta
         database_url=url,  # type: ignore[arg-type]
         redis_url=f"redis://{host}:{port}/0",  # type: ignore[arg-type]
         jwt_secret=TEST_JWT_SECRET,  # type: ignore[arg-type]
+        fakepay_webhook_secret=TEST_WEBHOOK_SECRET,  # type: ignore[arg-type]
+        fakepay_url="http://fakepay.test",
         log_format="json",
     )
 

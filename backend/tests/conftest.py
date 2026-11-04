@@ -26,6 +26,7 @@ def settings() -> Settings:
         database_url="postgresql+asyncpg://eventpark:unused@127.0.0.1:1/eventpark",
         redis_url="redis://127.0.0.1:1/0",
         jwt_secret="test-jwt-secret-0123456789abcdef0123456789",
+        fakepay_webhook_secret="whsec_test_0123456789",
         log_format="json",
         log_level="INFO",
     )

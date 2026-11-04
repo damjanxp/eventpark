@@ -13,10 +13,11 @@ from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 
 from eventpark.api.deps import SessionDep, SettingsDep, utcnow
+from eventpark.api.public import ProviderDep
 from eventpark.core.errors import Unauthorized
 from eventpark.domain.tickets import PassageStatus, TicketStatus
 from eventpark.domain.venues import PrinterStatus
-from eventpark.services import gate
+from eventpark.services import exit_payment, gate
 from eventpark.services.gate import DeviceContext, GateDecision, GateSettings
 
 router = APIRouter(prefix="/gate/v1", tags=["gate devices"])
@@ -57,6 +58,14 @@ class ScanRequest(BaseModel):
 
 class IssueRequest(BaseModel):
     request_id: str = IdempotencyKey
+
+
+class PayRequest(BaseModel):
+    request_id: str = IdempotencyKey
+    passage_id: uuid.UUID
+    card_token: str = Field(
+        min_length=3, max_length=64, description="from the card terminal (fake: tok_ok, tok_decline, tok_slow)"
+    )
 
 
 class PassageEventRequest(BaseModel):
@@ -105,6 +114,23 @@ async def exit_scan(body: ScanRequest, device: DeviceDep, session: SessionDep, c
     """Ticket at an exit lane -> OPEN, PAYMENT_REQUIRED (drive-up with a fee due) or DENY."""
     return await gate.exit_scan(
         session, device, scan_id=body.scan_id, ticket_code=body.ticket_code, now=utcnow(), cfg=cfg
+    )
+
+
+@router.post("/exit/pay")
+async def exit_pay(
+    body: PayRequest, device: DeviceDep, session: SessionDep, cfg: GateCfg, provider: ProviderDep
+) -> GateDecision:
+    """Card tapped at an exit lane -> OPEN, DECLINED or PAYMENT_PENDING (unknown yet: retry, SAME request_id)."""
+    return await exit_payment.exit_pay(
+        session,
+        device,
+        provider,
+        request_id=body.request_id,
+        passage_id=body.passage_id,
+        card_token=body.card_token,
+        now=utcnow(),
+        cfg=cfg,
     )
 
 

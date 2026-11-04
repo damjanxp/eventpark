@@ -33,6 +33,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from eventpark.core.ids import uuid7
 from eventpark.db.base import Base
 from eventpark.domain.events import EventStatus
+from eventpark.domain.payments import BookingStatus, PaymentKind, PaymentStatus
 from eventpark.domain.roles import Role
 from eventpark.domain.tickets import PassageStatus, RejectReason, TicketStatus, TicketType
 from eventpark.domain.venues import DeviceCommandType, DeviceStatus, GateDirection, PrinterStatus, SpaceKind
@@ -334,7 +335,7 @@ class Ticket(Base):
     event_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("events.id", ondelete="RESTRICT"))
     type: Mapped[TicketType] = mapped_column(enum_column(TicketType, "type"))
     code: Mapped[str] = mapped_column(String(40), unique=True)  # opaque EP1-..., the only thing in the QR code
-    booking_id: Mapped[uuid.UUID | None] = mapped_column(unique=True)  # FK added with the bookings table (Phase 5)
+    booking_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("bookings.id", ondelete="RESTRICT"), unique=True)
     event_zone_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("event_zones.id", ondelete="RESTRICT"))
     space_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("spaces.id", ondelete="RESTRICT"))
     vehicle_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("vehicles.id", ondelete="SET NULL"))
@@ -428,3 +429,77 @@ class OutboxMessage(Base):
         # The relay polls "oldest unpublished first": a partial index over only the unpublished rows stays tiny.
         Index("ix_outbox_unpublished", "id", postgresql_where=text("published_at IS NULL")),
     )
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Bookings & payments (Phase 5)
+# ---------------------------------------------------------------------------------------------------------------------
+
+
+class Booking(Base):
+    """An online pre-booking. PENDING_PAYMENT holds a place (and VIP space) for 15 min; the webhook confirms it."""
+
+    __tablename__ = "bookings"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    event_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("events.id", ondelete="RESTRICT"))
+    event_zone_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("event_zones.id", ondelete="RESTRICT"))
+    space_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("spaces.id", ondelete="RESTRICT"))
+    vehicle_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("vehicles.id", ondelete="SET NULL"))
+    status: Mapped[BookingStatus] = mapped_column(enum_column(BookingStatus, "status"))
+    price_minor: Mapped[int] = mapped_column(BigInteger)
+    currency: Mapped[str] = mapped_column(String(3))
+    expires_at: Mapped[datetime]
+    # Optional client-supplied key: a double-clicked "Book" button creates one booking, not two holds.
+    idempotency_key: Mapped[str | None] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = created_at()
+
+    __table_args__ = (
+        # Invariant 3 (docs/01 §7): one active booking per VIP space per event. Concurrent bookings of the same space:
+        # the second INSERT fails on this index, inside its transaction, so it can never be double-sold.
+        Index(
+            "uq_bookings_active_space",
+            "event_id",
+            "space_id",
+            unique=True,
+            postgresql_where=text("space_id IS NOT NULL AND status IN ('PENDING_PAYMENT', 'CONFIRMED')"),
+        ),
+        Index("ix_bookings_pending_expiry", "expires_at", postgresql_where=text("status = 'PENDING_PAYMENT'")),
+        CheckConstraint("price_minor >= 0", name="price_not_negative"),
+    )
+
+
+class Payment(Base):
+    __tablename__ = "payments"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    kind: Mapped[PaymentKind] = mapped_column(enum_column(PaymentKind, "kind"))
+    booking_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("bookings.id", ondelete="RESTRICT"), index=True)
+    ticket_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("tickets.id", ondelete="RESTRICT"), index=True)
+    passage_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("passages.id", ondelete="RESTRICT"))
+    amount_minor: Mapped[int] = mapped_column(BigInteger)
+    currency: Mapped[str] = mapped_column(String(3))
+    status: Mapped[PaymentStatus] = mapped_column(enum_column(PaymentStatus, "status"))
+    # Sent to the provider on every attempt: the provider charges at most once per key, however often we retry.
+    idempotency_key: Mapped[str] = mapped_column(String(80), unique=True)
+    provider_ref: Mapped[str | None] = mapped_column(String(64), index=True)  # intent id / charge id at fakepay
+    failure_reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at()
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        CheckConstraint("amount_minor > 0", name="amount_positive"),
+        Index("ix_payments_unresolved", "updated_at", postgresql_where=text("status IN ('PENDING', 'UNKNOWN')")),
+    )
+
+
+class WebhookEvent(Base):
+    """Every provider event we processed, keyed by the provider's event id: a duplicate delivery hits the PRIMARY KEY
+    and is skipped, inside the same transaction as its effects."""
+
+    __tablename__ = "webhook_events"
+
+    provider_event_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    received_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB)

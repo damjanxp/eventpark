@@ -19,6 +19,11 @@ x-backend-env: &backend-env
   DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
   REDIS_URL: redis://valkey:6379/0
   JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+  FAKEPAY_WEBHOOK_SECRET: ${FAKEPAY_WEBHOOK_SECRET:?set FAKEPAY_WEBHOOK_SECRET in .env}
+  FAKEPAY_URL: http://fakepay:8000  # server to server, inside the Compose network
+  FAKEPAY_PUBLIC_URL: http://localhost:8100  # what a browser can open (checkout page)
+  WEBHOOK_BASE_URL: http://api:8000  # where fakepay delivers webhooks
+  PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-http://localhost:5173}
   AWS_REGION: eu-central-1
   AWS_DEFAULT_REGION: eu-central-1
   AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-eventpark-local}
@@ -164,6 +169,17 @@ services:
         condition: service_healthy
       valkey:
         condition: service_healthy
+
+  fakepay:
+    # Simulated payment provider (docs/02-architecture.md §11). Checkout page: http://localhost:8100/checkout/<id>
+    build: ./fakepay
+    image: eventpark-fakepay:local
+    environment:
+      FAKEPAY_WEBHOOK_SECRET: ${FAKEPAY_WEBHOOK_SECRET:?set FAKEPAY_WEBHOOK_SECRET in .env}
+      FAKEPAY_PUBLIC_URL: http://localhost:8100
+      FAKEPAY_DUPLICATE_WEBHOOK_RATE: ${FAKEPAY_DUPLICATE_WEBHOOK_RATE:-0.1}  # duplicates on purpose: we must dedupe
+    ports:
+      - "127.0.0.1:8100:8000"
 
 volumes:
   postgres-data:

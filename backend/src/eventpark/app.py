@@ -12,7 +12,7 @@ import structlog
 from fastapi import FastAPI
 
 from eventpark.api import gate as gate_api
-from eventpark.api import health
+from eventpark.api import health, public, webhooks
 from eventpark.api.admin import events as admin_events
 from eventpark.api.admin import users as admin_users
 from eventpark.api.admin import venues as admin_venues
@@ -24,6 +24,7 @@ from eventpark.core.config import Settings, get_settings
 from eventpark.core.logging import configure_logging
 from eventpark.db.engine import create_engine
 from eventpark.db.session import create_sessionmaker
+from eventpark.services.provider import PaymentProvider
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -38,9 +39,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.engine = create_engine(settings)
         app.state.sessionmaker = create_sessionmaker(app.state.engine)
         app.state.redis = create_redis(settings)
+        app.state.provider = PaymentProvider(settings.fakepay_url, terminal_timeout=settings.terminal_timeout_seconds)
         log.info("app.started")
         yield
         # Shutdown: close the pools so Postgres/Redis don't keep half-open connections.
+        await app.state.provider.aclose()
         await app.state.redis.aclose()
         await app.state.engine.dispose()
         log.info("app.stopped")
@@ -61,4 +64,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(admin_venues.router)
     app.include_router(admin_events.router)
     app.include_router(gate_api.router)
+    app.include_router(public.router)
+    app.include_router(webhooks.router)
     return app

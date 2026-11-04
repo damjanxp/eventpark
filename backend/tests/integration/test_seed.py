@@ -18,6 +18,7 @@ async def test_seed_is_idempotent(
     monkeypatch.setenv("DATABASE_URL", str(settings.database_url))
     monkeypatch.setenv("REDIS_URL", str(settings.redis_url))
     monkeypatch.setenv("JWT_SECRET", settings.jwt_secret.get_secret_value())
+    monkeypatch.setenv("FAKEPAY_WEBHOOK_SECRET", settings.fakepay_webhook_secret.get_secret_value())
     get_settings.cache_clear()
     try:
         first = await seed()

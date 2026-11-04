@@ -48,6 +48,16 @@ class Settings(BaseSettings):
     # How long a PAYMENT_REQUIRED exit waits for the card before the passage expires.
     payment_pending_seconds: int = Field(default=300, gt=0)
 
+    # --- payments (fakepay locally; a real provider would be the same shape) ---
+    fakepay_url: str = "http://localhost:8100"  # where the API reaches the provider (server to server)
+    fakepay_public_url: str = "http://localhost:8100"  # where a BROWSER reaches the checkout page
+    fakepay_webhook_secret: SecretStr = Field(min_length=16)
+    # Where the provider must send webhooks to reach this API, and where the browser returns after checkout.
+    webhook_base_url: str = "http://localhost:8000"
+    public_web_url: str = "http://localhost:5173"
+    terminal_timeout_seconds: float = Field(default=5.0, gt=0)  # exit-lane card charge: never wait longer
+    booking_hold_minutes: int = Field(default=15, gt=0)
+
     @property
     def access_token_ttl(self) -> timedelta:
         return timedelta(seconds=self.access_token_ttl_seconds)

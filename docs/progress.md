@@ -1,6 +1,6 @@
 # Progress
 
-**Active phase:** Phase 5 — Payments & booking
+**Active phase:** Phase 6 — Outbox, SQS, workers, S3
 **AWS dev environment:** ⛔ down   *(update whenever you run aws-up / aws-down)*
 
 | # | Phase | Est. days | Status | Journal | Notes |
@@ -10,7 +10,7 @@
 | 2 | Domain model, auth & admin API | 2 | ✅ | [phase-02](journal/phase-02.md) | journal + checkpoint deferred |
 | 3 | Gate hot path & concurrency ⭐ | 3 | ✅ | | experiment: [phase-03-allocation](experiments/phase-03-allocation.md); journal + checkpoint deferred |
 | 4 | Gate controller (the Pi) | 1.5 | ✅ | | experiments: [phase-04](experiments/phase-04-gate-controller.md); journal + checkpoint deferred |
-| 5 | Payments & booking | 2 | ⬜ | | |
+| 5 | Payments & booking | 2 | ✅ | | journal + checkpoint deferred |
 | 6 | Outbox, SQS, workers, S3 | 2.5 | ⬜ | | |
 | 7 | Redis: cache, read model, rate limit, realtime | 1.5 | ⬜ | | |
 | 8 | Frontend | 3 | ⬜ | | |
@@ -49,6 +49,10 @@ Status: ⬜ not started · 🟨 in progress · ✅ done · ✂️ cut (see cut l
 - 2026-11-04 — Phase 4 — gate-controller package (HAL protocols + simulated hardware, client with timeout/retries/
   backoff+jitter, lane state machine entry/exit incl. payment states, heartbeat + commands), `make lane GATE=N1`,
   API-outage experiment (1 passage), init now mounts migrations (stale-image bug), CI job — next: Phase 5
+- 2026-11-04 — Phase 5 — fakepay service (intents, checkout, signed webhooks w/ retries + duplicates, terminal with
+  test tokens, idempotency), bookings/payments/webhook_events tables, exit/pay (commit PENDING → call → record;
+  timeout = UNKNOWN), booking holds with lazy expiry, VIP partial unique index, webhook verify + dedupe, payment state
+  machine, live e2e booking + tok_slow exit verified; httpx moved to runtime deps (caught by the container) — next: Phase 6
 
 ## Spending log
 <!-- Monday check of Cost Explorer: date — month-to-date cost (before credits) — credits left -->

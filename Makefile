@@ -42,6 +42,7 @@ lane: ## Drive one lane by keyboard: make lane GATE=N1 (entry N1..S2, exit X1..X
 test: ## All tests: backend (integration tests start containers: needs Docker) + gate controller
 	$(BACKEND) uv run pytest
 	cd gate-controller && uv run pytest
+	cd fakepay && uv run pytest
 
 test-fast: ## Backend tests that need no Docker
 	$(BACKEND) uv run pytest -m "not integration"
@@ -50,6 +51,7 @@ lint: ## The same checks as CI: lint, formatting, types
 	$(BACKEND) uv run ruff check . && uv run ruff format --check . && uv run mypy src
 	uvx ruff check scripts && uvx ruff format --check scripts
 	cd gate-controller && uv run ruff check . && uv run ruff format --check . && uv run mypy
+	cd fakepay && uv run ruff check . && uv run ruff format --check . && uv run mypy
 
 fmt: ## Auto-fix lint issues and format the code
 	$(BACKEND) uv run ruff check --fix . && uv run ruff format .
