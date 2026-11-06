@@ -27,7 +27,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from eventpark.cache.client import create_redis
-from eventpark.core import aws
+from eventpark.core import aws, heartbeat
 from eventpark.core.config import Settings
 from eventpark.db.models import ProcessedMessage
 from eventpark.messaging.schemas import Envelope
@@ -178,6 +178,7 @@ class Consumer:
                     ReceiptHandle=receipt,
                     VisibilityTimeout=seconds,
                 )
+                heartbeat.beat()  # a long job is still progressing, not stuck
                 log.info("consumer.visibility_extended", seconds=seconds)
 
         return asyncio.get_running_loop().create_task(extend())
@@ -186,6 +187,7 @@ class Consumer:
         """Poll until SIGTERM; the batch in hand is finished before exiting (graceful shutdown)."""
         log.info("consumer.started", worker=self.handler.name, queue=self.handler.queue)
         while not stop.is_set():
+            heartbeat.beat()  # one beat per long poll (<= wait_seconds apart while idle)
             try:
                 await self.poll_once()
             except Exception:

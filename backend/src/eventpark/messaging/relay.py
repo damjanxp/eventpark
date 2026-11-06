@@ -27,7 +27,7 @@ import structlog
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from eventpark.core import aws
+from eventpark.core import aws, heartbeat
 from eventpark.core.config import Settings
 from eventpark.db.models import OutboxMessage
 
@@ -104,6 +104,7 @@ async def run_relay(
 ) -> None:
     log.info("relay.started")
     while not stop.is_set():
+        heartbeat.beat()
         try:
             async with sessions() as session:
                 published = await relay_once(session, publisher, batch_size=batch_size)

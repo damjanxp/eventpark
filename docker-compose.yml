@@ -197,8 +197,13 @@ services:
       SERVICE_NAME: outbox-relay
     volumes:
       - ./backend/src:/app/src:ro
-    healthcheck:
-      disable: true  # no HTTP port; a stuck relay shows up as growing outbox lag (Phase 14 alarm)
+    healthcheck: &heartbeat-check
+      # No HTTP port: the loop touches a file each round; stale file = stuck (ADR-026, core/heartbeat.py)
+      test: ["CMD", "python", "-m", "eventpark.core.heartbeat"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
     restart: unless-stopped
     depends_on: &worker-deps
       init:
@@ -215,8 +220,7 @@ services:
       SERVICE_NAME: worker-entry
     volumes:
       - ./backend/src:/app/src:ro
-    healthcheck:
-      disable: true
+    healthcheck: *heartbeat-check
     restart: unless-stopped
     depends_on: *worker-deps
 
@@ -229,8 +233,7 @@ services:
       SERVICE_NAME: worker-exit
     volumes:
       - ./backend/src:/app/src:ro
-    healthcheck:
-      disable: true
+    healthcheck: *heartbeat-check
     restart: unless-stopped
     depends_on: *worker-deps
 
@@ -243,8 +246,7 @@ services:
       SERVICE_NAME: worker-notifications
     volumes:
       - ./backend/src:/app/src:ro
-    healthcheck:
-      disable: true
+    healthcheck: *heartbeat-check
     restart: unless-stopped
     depends_on: *worker-deps
 
@@ -257,8 +259,7 @@ services:
       SERVICE_NAME: worker-reports
     volumes:
       - ./backend/src:/app/src:ro
-    healthcheck:
-      disable: true
+    healthcheck: *heartbeat-check
     restart: unless-stopped
     depends_on: *worker-deps
 
@@ -271,8 +272,7 @@ services:
       SERVICE_NAME: worker-maintenance
     volumes:
       - ./backend/src:/app/src:ro
-    healthcheck:
-      disable: true
+    healthcheck: *heartbeat-check
     restart: unless-stopped
     depends_on: *worker-deps
 
@@ -285,10 +285,10 @@ services:
       <<: *backend-env
       SERVICE_NAME: ticker
       TICK_SECONDS: ${TICK_SECONDS:-60}
+      HEARTBEAT_MAX_AGE: "150"  # must exceed TICK_SECONDS (one beat per tick)
     volumes:
       - ./backend/src:/app/src:ro
-    healthcheck:
-      disable: true
+    healthcheck: *heartbeat-check
     restart: unless-stopped
     depends_on: *worker-deps
 

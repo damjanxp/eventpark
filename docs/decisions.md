@@ -196,3 +196,19 @@ number. Superseded decisions stay, marked *Superseded by ADR-xxx*. When you wond
   (manual reconfiguration before every event); per-zone events (much more complex model).
 - **Consequences:** back-to-back events at one venue need the first one ended (manually or by the maintenance job at
   `gates_close_at`) before the second goes live. Pre-booked tickets are unaffected: their event is on the ticket.
+
+### ADR-026 — Worker liveness via a heartbeat file
+- **Context:** the API proves it is alive with `GET /healthz`; workers, the outbox relay and the ticker have no port.
+  Phase 6 shipped them with `healthcheck: disable: true`, which (a) breaks `docker compose up --wait` in newer Compose
+  ("has no healthcheck configured", CI red since Phase 6) and (b) means a process that is *running but stuck* (hung
+  call, deadlock, crashed background task) is never noticed.
+- **Decision:** each main loop calls `core.heartbeat.beat()` (touches `/tmp/eventpark-heartbeat`) once per
+  iteration — per long poll (≤ 20 s idle), per relay round, per tick, and per visibility extension during long report
+  jobs. The container healthcheck is `python -m eventpark.core.heartbeat`: healthy iff the file is younger than
+  `HEARTBEAT_MAX_AGE` (default 90 s; 150 s for the ticker, which beats once per `TICK_SECONDS`).
+- **Alternatives:** a tiny HTTP server per worker (another port, another thread, same information); "process exists"
+  checks like `kill -0 1` (always true while the container runs: useless); only `--wait` on API services (CI green,
+  but crash-looping workers pass unnoticed).
+- **Consequences:** the same command becomes the ECS container `healthCheck` in Phase 12, so ECS replaces stuck worker
+  tasks. Compose only marks them unhealthy (no restart). A single handler call that blocks longer than the max age
+  without extending visibility is reported as unhealthy — intended.

@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 
 import structlog
 
-from eventpark.core import aws
+from eventpark.core import aws, heartbeat
 from eventpark.core.config import get_settings
 from eventpark.core.ids import uuid7
 from eventpark.core.logging import configure_logging
@@ -42,6 +42,7 @@ async def main() -> None:
     stop = asyncio.Event()
     install_stop_signals(stop)
     while not stop.is_set():
+        heartbeat.beat()  # HEARTBEAT_MAX_AGE must be > TICK_SECONDS (compose sets it)
         try:
             await aws.run(sqs.send_message, QueueUrl=queue_url, MessageBody=tick_message())
             log.info("ticker.tick")
