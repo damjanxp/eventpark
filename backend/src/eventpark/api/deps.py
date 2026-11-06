@@ -128,4 +128,5 @@ def require_roles(*roles: Role) -> Callable[[Principal], Awaitable[Principal]]:
 AdminDep = Annotated[Principal, Depends(require_roles(Role.ADMIN))]
 EventManagerDep = Annotated[Principal, Depends(require_roles(Role.ADMIN, Role.EVENT_MANAGER))]
 StaffDep = Annotated[Principal, Depends(require_roles(*STAFF_ROLES))]
+OperatorDep = Annotated[Principal, Depends(require_roles(Role.ADMIN, Role.GATE_OPERATOR))]
 DriverDep = Annotated[Principal, Depends(require_roles(Role.DRIVER))]

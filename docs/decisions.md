@@ -229,3 +229,22 @@ number. Superseded decisions stay, marked *Superseded by ADR-xxx*. When you wond
 - **Consequences:** measured with Redis stopped: first car ~450 ms, then ~30 ms (normal ~24 ms). Up to 5 s after
   Redis comes back we still skip it (cache misses go to Postgres; limiter open) — harmless. Pipelines and pub/sub
   bypass `execute_command`; the subscriber has its own reconnect backoff.
+
+### ADR-028 — Operator actions: server-side manual passages, booth-collected lost-ticket fee
+- **Context:** Phase 8's operator console needs manual open, void and lost ticket (docs/01 §6 F); no earlier phase
+  built the endpoints. The device only executes `OPEN_BARRIER` (no ticket, no `/complete` call afterwards), and a
+  lost-ticket driver at an exit lane has nothing to scan, so the lane's normal pay flow can't be used.
+- **Decision:** (1) `POST /admin/v1/gates/{id}/manual-open {request_id, reason, ticket_code?}` queues the command
+  and records a **COMPLETED `manual` passage** right away (idempotency key `op:<request_id>`). At an exit with a
+  ticket, the ticket becomes `EXITED`, its place is released, and the fee due becomes `passage.released_unpaid`.
+  Without a ticket the passage counts as an entry/exit in stats but changes no ticket (like tailgating: occupancy
+  can undercount). (2) `POST /tickets/{id}/void` releases whatever the ticket holds (same counters as the hot path).
+  (3) `POST /tickets/lost {request_id, gate_id, ticket_code? | plate?}`: the operator collects the flat
+  `lost_ticket_fee_minor` at the booth; recorded as a `SUCCEEDED` `LOST_TICKET` payment (no provider call), ticket
+  `VOID`, barrier command, `payment.succeeded` for revenue. All writes: one transaction, lock order
+  event_zone → ticket → passage, audited with reason, read model refreshed + pushed after commit.
+- **Alternatives:** lane-side lost-ticket payment (needs a device protocol change: the lane would have to learn about
+  an operator-created passage); making the device call `/complete` after a manual open (the device doesn't know a
+  passage id; adds a round trip to an emergency action).
+- **Consequences:** manual opens without a ticket can't be tied to a car. A booth payment is trusted (no card
+  provider record) — acceptable for a simulation; a real system would charge via the booth's own terminal.

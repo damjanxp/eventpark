@@ -27,6 +27,7 @@ ROUTES: dict[str, str] = {
     "passage.aborted": "{direction}-events",
     "passage.rejected": "{direction}-events",
     "payment.succeeded": "exit-events",
+    "passage.released_unpaid": "exit-events",  # operator let a car out without paying (services/operations.py)
     "booking.confirmed": "notifications",
     "booking.expired": "notifications",
     "alert.zone_threshold": "notifications",

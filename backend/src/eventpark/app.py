@@ -17,6 +17,7 @@ from eventpark.api import gate as gate_api
 from eventpark.api import health, public, webhooks, ws
 from eventpark.api.admin import events as admin_events
 from eventpark.api.admin import files as admin_files
+from eventpark.api.admin import operations as admin_operations
 from eventpark.api.admin import users as admin_users
 from eventpark.api.admin import venues as admin_venues
 from eventpark.api.auth import admin_auth_router, public_auth_router
@@ -83,6 +84,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(admin_users.router)
     app.include_router(admin_venues.router)
     app.include_router(admin_events.router)
+    app.include_router(admin_operations.router)
     app.include_router(admin_files.router)
     app.include_router(gate_api.router)
     app.include_router(public.router)
