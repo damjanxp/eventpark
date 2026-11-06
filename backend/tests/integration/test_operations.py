@@ -298,3 +298,36 @@ async def test_gate_activity_and_hourly_stats(
     assert by_code["X1"]["online"] is False  # never sent a heartbeat
     assert [h["entries"] for h in stats["hours"]] == [5, 2]
     assert stats["total_entries"] == 7 and stats["total_revenue_minor"] == 90_000
+
+
+async def test_prebooked_counters_stay_consistent_with_bookings(
+    client: AsyncClient, db: async_sessionmaker[AsyncSession], auth_headers: HeadersFactory
+) -> None:
+    """prebook_held == active bookings: a manual exit keeps the hold (single-entry pass); a void releases it."""
+    world = await build_world(db)
+    operator = await auth_headers(Role.GATE_OPERATOR)
+    leaving = await add_prebooked_ticket(db, world)
+    voided = await add_prebooked_ticket(db, world)
+    for ticket in (leaving, voided):
+        scan = (
+            await client.post(
+                "/gate/v1/entry/scan", json={"scan_id": rid(), "ticket_code": ticket.code}, headers=world.headers("N1")
+            )
+        ).json()
+        await client.post(f"/gate/v1/passages/{scan['passage_id']}/complete", headers=world.headers("N1"))
+    assert (await event_zone(db, world)).prebook_inside == 2
+
+    x1 = await gate_id(db, world, "X1")
+    released = await client.post(
+        f"/admin/v1/gates/{x1}/manual-open",
+        json={"request_id": rid(), "reason": "scanner broken", "ticket_code": leaving.code},
+        headers=operator,
+    )
+    voided_response = await client.post(
+        f"/admin/v1/tickets/{voided.id}/void", json={"reason": "fraud"}, headers=operator
+    )
+
+    assert released.status_code == voided_response.status_code == 200
+    ez = await event_zone(db, world)
+    assert ez.prebook_inside == 0
+    assert ez.prebook_held == 1  # the exited pass keeps its reservation, the voided one gave it back

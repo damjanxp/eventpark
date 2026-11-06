@@ -19,11 +19,12 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy import and_, case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from eventpark.core.errors import Conflict, NotFound, ValidationFailed
 from eventpark.db.models import (
+    Booking,
     Device,
     DeviceCommand,
     Event,
@@ -40,7 +41,7 @@ from eventpark.db.models import (
 )
 from eventpark.db.pagination import decode_cursor, encode_cursor
 from eventpark.domain.events import EventStatus
-from eventpark.domain.payments import PaymentKind, PaymentStatus, normalize_plate
+from eventpark.domain.payments import BookingStatus, PaymentKind, PaymentStatus, normalize_plate
 from eventpark.domain.pricing import FeeRules, calculate_drive_up_fee
 from eventpark.domain.tickets import FINAL_TICKET_STATUSES, PassageStatus, TicketStatus, TicketType
 from eventpark.domain.venues import DeviceCommandType, DeviceStatus, GateDirection
@@ -174,7 +175,24 @@ def _release_capacity(ticket: Ticket, event_zone: EventZone) -> None:
         return
     if ticket.status in (TicketStatus.INSIDE, TicketStatus.EXITING):
         event_zone.prebook_inside -= 1
-    event_zone.prebook_held -= 1
+    event_zone.prebook_held -= 1  # prebook_held counts ACTIVE bookings: the caller must cancel the booking too
+
+
+def _exit_capacity(ticket: Ticket, event_zone: EventZone) -> None:
+    """The car left (like complete_passage on an exit): drive-up frees its place; a pre-booked pass leaves
+    `prebook_inside` but keeps its booking hold (single-entry pass)."""
+    if ticket.type is TicketType.DRIVE_UP:
+        event_zone.drive_up_occupied -= 1
+    else:
+        event_zone.prebook_inside -= 1
+
+
+async def _cancel_booking(session: AsyncSession, ticket: Ticket) -> None:
+    """A voided pre-booked pass ends its booking, keeping `prebook_held == active bookings` true."""
+    if ticket.booking_id is not None:
+        await session.execute(
+            update(Booking).where(Booking.id == ticket.booking_id).values(status=BookingStatus.CANCELLED)
+        )
 
 
 async def _fee_due(session: AsyncSession, ticket: Ticket, now: datetime) -> tuple[int, str]:
@@ -295,7 +313,7 @@ async def manual_open(
             pending_due = await _close_open_passages(session, ticket.id)
             fee, currency = await _fee_due(session, ticket, now)
             amount_due = max(pending_due, fee)
-            _release_capacity(ticket, event_zone)
+            _exit_capacity(ticket, event_zone)
             ticket.status, ticket.exited_at, ticket.hold_expires_at = TicketStatus.EXITED, now, None
 
         command = _command(session, device, actor=actor, reason=reason)
@@ -373,6 +391,7 @@ async def void_ticket(
         await _close_open_passages(session, ticket.id)
         previous = ticket.status
         _release_capacity(ticket, event_zone)
+        await _cancel_booking(session, ticket)
         ticket.status, ticket.hold_expires_at = TicketStatus.VOID, None
         audit.record(
             session,
@@ -419,6 +438,7 @@ async def lost_ticket(
                 raise Conflict(f"Ticket is {ticket.status.value}, not inside.", code="TICKET_NOT_INSIDE")
             await _close_open_passages(session, ticket.id)
             _release_capacity(ticket, event_zone)
+            await _cancel_booking(session, ticket)
             ticket.status, ticket.exited_at, ticket.hold_expires_at = TicketStatus.VOID, now, None
             ticket.paid_minor += fee
             ticket.paid_at = now

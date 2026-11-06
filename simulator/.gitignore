@@ -1,0 +1,3 @@
+reports/*.md
+reports/*.csv
+!reports/.gitkeep

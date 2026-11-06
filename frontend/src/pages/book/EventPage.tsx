@@ -72,6 +72,11 @@ export function EventPage() {
         </p>
       </div>
 
+      {!e.bookable_now && (
+        <p className="rounded-md border border-line bg-raised px-3 py-2 text-sm">
+          Online booking is closed for this event. You can still drive up and pay at the exit.
+        </p>
+      )}
       <Card>
         <CardHeader title="1. Choose a zone" sub="availability updates every few seconds" />
         <CardBody className="grid gap-3 sm:grid-cols-3">
