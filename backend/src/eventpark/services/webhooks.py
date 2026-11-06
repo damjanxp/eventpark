@@ -5,7 +5,8 @@ Providers deliver webhooks AT LEAST once: they retry until we answer 2xx, and so
 2. INSERT the provider's event id into webhook_events in the SAME transaction as the effects: a duplicate hits the
    primary key and does nothing, and two copies arriving at the same instant are serialised by the key (the second
    waits for the first to commit, then finds the row);
-3. answer 2xx for anything we accepted, even "nothing to do", so the provider stops retrying.
+3. answer 2xx for anything we accepted, even "nothing to do", so the provider stops retrying;
+4. answer 503 for an intent we can't place yet: nothing is recorded, so the provider's retry is processed normally.
 """
 
 import json
@@ -14,11 +15,11 @@ from datetime import datetime
 from typing import Any, Literal
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from eventpark.core.errors import Unauthorized, ValidationFailed
+from eventpark.core.errors import AppError, Unauthorized, ValidationFailed
 from eventpark.core.webhooks import InvalidSignature, verify_signature
 from eventpark.db.models import Booking, EventZone, Payment, Ticket, WebhookEvent
 from eventpark.domain.payments import (
@@ -35,7 +36,24 @@ from eventpark.messaging import outbox
 log = structlog.get_logger()
 
 WebhookResult = Literal["processed", "duplicate", "ignored"]
+
+
+class WebhookNotReady(AppError):
+    """503: we can't place this event yet; the provider must retry (it does, with backoff)."""
+
+    status = 503
+    title = "Not ready"
+    default_code = "WEBHOOK_NOT_READY"
+
+
 _OUTCOMES = {"payment_intent.succeeded": PaymentOutcome.SUCCEEDED, "payment_intent.failed": PaymentOutcome.FAILED}
+
+
+def _uuid_or_none(value: object) -> uuid.UUID | None:
+    try:
+        return uuid.UUID(str(value)) if value else None
+    except ValueError:
+        return None
 
 
 def parse_and_verify(body: bytes, signature: str | None, *, secret: str, now: int) -> dict[str, Any]:
@@ -75,9 +93,29 @@ async def handle_payment_event(session: AsyncSession, event: dict[str, Any], *, 
                 )
             )
         ).first()
+        if payment_peek is None:
+            # Race (found by the Phase 9 presale): the provider can call us BEFORE we stored the intent id
+            # (create_intent returned, our "save provider_ref" transaction hasn't committed yet). Our own booking id
+            # travels in the intent's metadata, so match on that and store the intent id now.
+            booking_ref = _uuid_or_none((intent.get("metadata") or {}).get("booking_id"))
+            if booking_ref:
+                payment_peek = (
+                    await session.execute(
+                        update(Payment)
+                        .where(
+                            Payment.booking_id == booking_ref,
+                            Payment.kind == PaymentKind.BOOKING,
+                            Payment.provider_ref.is_(None),
+                        )
+                        .values(provider_ref=intent["id"])
+                        .returning(Payment.id, Payment.booking_id)
+                    )
+                ).first()
         if payment_peek is None or payment_peek.booking_id is None:
+            # Not ours (yet)? Answer non-2xx: the transaction rolls back (the event id is NOT recorded as handled) and
+            # the provider retries with backoff. Answering 2xx here would drop a real payment on the floor.
             log.warning("webhook.unknown_intent", intent_id=intent["id"])
-            return "ignored"
+            raise WebhookNotReady("Unknown payment intent; retry later.", code="UNKNOWN_INTENT")
         booking_peek = await session.get(Booking, payment_peek.booking_id)
         if booking_peek is None:  # pragma: no cover (FK)
             return "ignored"

@@ -24,10 +24,11 @@ from eventpark.core.ids import uuid7
 from eventpark.core.security import (
     create_access_token,
     hash_password,
+    hash_password_async,
     hash_refresh_token,
     new_refresh_token,
     password_needs_rehash,
-    verify_password,
+    verify_password_async,
 )
 from eventpark.db.models import RefreshToken, User
 from eventpark.domain.roles import Role
@@ -76,8 +77,9 @@ def _issue(session: AsyncSession, user: User, family_id: uuid.UUID, settings: Se
 async def register_driver(
     session: AsyncSession, *, email: str, password: str, full_name: str, settings: Settings, now: datetime
 ) -> TokenPair:
+    password_hash = await hash_password_async(password)  # before the transaction: don't hold a DB connection
     async with session.begin():
-        user = User(email=email, password_hash=hash_password(password), full_name=full_name, role=Role.DRIVER)
+        user = User(email=email, password_hash=password_hash, full_name=full_name, role=Role.DRIVER)
         session.add(user)
         try:
             await session.flush()  # sends the INSERT now, so a duplicate email fails here (UNIQUE constraint)
@@ -97,18 +99,22 @@ async def login(
     settings: Settings,
     now: datetime,
 ) -> TokenPair:
+    # Look the user up, then verify the password OUTSIDE any transaction (slow on purpose: no connection held).
     async with session.begin():
-        user = await session.scalar(select(User).where(User.email == email))
-        if user is None:
-            verify_password(_DUMMY_HASH, password)  # same work as a real check (see _DUMMY_HASH)
-            raise Unauthorized(_INVALID_CREDENTIALS, code="INVALID_CREDENTIALS")
-        if not verify_password(user.password_hash, password):
-            raise Unauthorized(_INVALID_CREDENTIALS, code="INVALID_CREDENTIALS")
+        found = (await session.execute(select(User.id, User.password_hash).where(User.email == email))).first()
+    if found is None:
+        await verify_password_async(_DUMMY_HASH, password)  # same work as a real check (see _DUMMY_HASH)
+        raise Unauthorized(_INVALID_CREDENTIALS, code="INVALID_CREDENTIALS")
+    if not await verify_password_async(found.password_hash, password):
+        raise Unauthorized(_INVALID_CREDENTIALS, code="INVALID_CREDENTIALS")
+    upgraded = await hash_password_async(password) if password_needs_rehash(found.password_hash) else None
+    async with session.begin():
+        user = await session.get(User, found.id)
         # Same message for "inactive" and "wrong app" (driver on the staff login): don't reveal account details.
-        if not user.is_active or user.role not in allowed_roles:
+        if user is None or not user.is_active or user.role not in allowed_roles:
             raise Unauthorized(_INVALID_CREDENTIALS, code="INVALID_CREDENTIALS")
-        if password_needs_rehash(user.password_hash):
-            user.password_hash = hash_password(password)  # silently upgrade old hashes while we know the password
+        if upgraded is not None:
+            user.password_hash = upgraded  # silently upgrade old hashes while we know the password
         pair = _issue(session, user, uuid7(), settings, now)
     log.info("auth.login", user_id=str(user.id), role=user.role.value)
     return pair

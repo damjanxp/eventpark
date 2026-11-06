@@ -193,24 +193,32 @@ async def create_booking(
         event = await session.get(Event, event_id)
         if event is None or not is_bookable(event, now):
             raise Conflict("Booking is not open for this event.", code="BOOKING_CLOSED")
-        # Lock order: event_zone first. FOR UPDATE makes this "read, check, write" safe: concurrent bookings of the
-        # same zone queue up on this row, so each one sees the counter its predecessor wrote.
-        event_zone = await session.scalar(
-            select(EventZone).where(EventZone.id == event_zone_id, EventZone.event_id == event_id).with_for_update()
+        # Everything that needs no lock happens BEFORE we lock the zone row (Phase 9 bottleneck: every booking of a
+        # zone queues on that one row, so each statement run while holding it delays all the others).
+        zone_id = await session.scalar(
+            select(EventZone.zone_id).where(EventZone.id == event_zone_id, EventZone.event_id == event_id)
         )
-        if event_zone is None:
+        if zone_id is None:
             raise NotFound("Zone not found for this event.", code="ZONE_NOT_FOUND")
-        await release_expired_holds(session, event_zone, now)
-        if event_zone.prebook_held >= event_zone.prebook_quota:
-            raise Conflict("Sold out in this zone.", code="SOLD_OUT")
-
-        zone_has_spaces = await session.scalar(select(exists().where(Space.zone_id == event_zone.zone_id)))
+        zone_has_spaces = await session.scalar(select(exists().where(Space.zone_id == zone_id)))
         if zone_has_spaces and space_id is None:
             raise ValidationFailed("Choose a space in this zone.", code="SPACE_REQUIRED")
         if space_id is not None:
             space_zone = await session.scalar(select(Space.zone_id).where(Space.id == space_id))
-            if space_zone != event_zone.zone_id:
+            if space_zone != zone_id:
                 raise ValidationFailed("That space is not in this zone.", code="SPACE_NOT_IN_ZONE")
+        vehicle_id = await _vehicle_id(session, plate, user_id)
+
+        # Now the hot part, as short as possible. Lock order: event_zone first. FOR UPDATE makes "read, check, write"
+        # safe: concurrent bookings of the same zone queue up on this row and each sees its predecessor's counter.
+        event_zone = await session.scalar(select(EventZone).where(EventZone.id == event_zone_id).with_for_update())
+        if event_zone is None:  # pragma: no cover (checked above; event zones aren't deleted while bookable)
+            raise NotFound("Zone not found for this event.", code="ZONE_NOT_FOUND")
+        if event_zone.prebook_held >= event_zone.prebook_quota:
+            # Only when it looks sold out: maybe some holds have expired (lazy expiry, like the gate hot path).
+            await release_expired_holds(session, event_zone, now)
+            if event_zone.prebook_held >= event_zone.prebook_quota:
+                raise Conflict("Sold out in this zone.", code="SOLD_OUT")
 
         event_zone.prebook_held += 1
         booking = Booking(
@@ -218,7 +226,7 @@ async def create_booking(
             event_id=event_id,
             event_zone_id=event_zone_id,
             space_id=space_id,
-            vehicle_id=await _vehicle_id(session, plate, user_id),
+            vehicle_id=vehicle_id,
             status=BookingStatus.PENDING_PAYMENT,
             price_minor=event_zone.prebook_price_minor,
             currency="RSD",

@@ -18,6 +18,8 @@ x-backend-env: &backend-env
   LOG_FORMAT: ${LOG_FORMAT:-console}
   DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
   REDIS_URL: redis://valkey:6379/0
+  DB_POOL_SIZE: ${DB_POOL_SIZE:-5}  # per process: total = processes x (size + overflow) <= Postgres max_connections
+  DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-10}
   JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
   FAKEPAY_WEBHOOK_SECRET: ${FAKEPAY_WEBHOOK_SECRET:?set FAKEPAY_WEBHOOK_SECRET in .env}
   FAKEPAY_URL: http://fakepay:8000  # server to server, inside the Compose network

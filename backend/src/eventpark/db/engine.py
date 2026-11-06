@@ -11,4 +11,13 @@ from eventpark.core.config import Settings
 
 
 def create_engine(settings: Settings) -> AsyncEngine:
-    return create_async_engine(str(settings.database_url))
+    # A request that finds the pool empty WAITS (up to pool_timeout) for a connection: under a burst, too small a
+    # pool turns into queueing that no CPU or index can fix (Phase 9). Too big a pool, times the number of tasks,
+    # exceeds the database's max_connections. The budget is per process: total = processes x (size + overflow).
+    return create_async_engine(
+        str(settings.database_url),
+        pool_size=settings.db_pool_size,
+        max_overflow=settings.db_max_overflow,
+        pool_timeout=settings.db_pool_timeout_seconds,
+        pool_pre_ping=True,  # a connection the DB closed (restart, failover) is replaced instead of failing a request
+    )

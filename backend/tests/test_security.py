@@ -164,3 +164,29 @@ def test_malformed_device_keys_are_rejected(bad: str) -> None:
 
     with pytest.raises(InvalidDeviceKeyError):
         parse_device_api_key(bad)
+
+
+async def test_password_hashing_does_not_block_the_event_loop() -> None:
+    """Phase 9 bottleneck: argon2 on the event loop froze every request in the process (presale: /healthz 1.7 s)."""
+    import asyncio
+    import time
+
+    from eventpark.core.security import hash_password_async, verify_password_async
+
+    gaps: list[float] = []
+    done = asyncio.Event()
+
+    async def heartbeat() -> None:  # a request that should be answered while others log in
+        last = time.perf_counter()
+        while not done.is_set():
+            await asyncio.sleep(0.005)
+            now = time.perf_counter()
+            gaps.append(now - last)
+            last = now
+
+    beat = asyncio.create_task(heartbeat())
+    hashes = await asyncio.gather(*(hash_password_async(f"password-{i}") for i in range(8)))
+    assert all(await asyncio.gather(*(verify_password_async(h, f"password-{i}") for i, h in enumerate(hashes))))
+    done.set()
+    await beat
+    assert max(gaps) < 0.05, f"event loop blocked for {max(gaps) * 1000:.0f} ms"

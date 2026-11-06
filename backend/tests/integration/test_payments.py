@@ -186,13 +186,17 @@ async def test_nothing_to_pay_is_409(
 
 
 def _webhook(
-    intent_id: str, status: str = "succeeded", event_id: str | None = None, t: int | None = None
+    intent_id: str,
+    status: str = "succeeded",
+    event_id: str | None = None,
+    t: int | None = None,
+    metadata: dict[str, str] | None = None,
 ) -> tuple[bytes, dict[str, str]]:
     body = json.dumps(
         {
             "id": event_id or f"evt_{uuid.uuid4().hex}",
             "type": f"payment_intent.{status}",
-            "data": {"object": {"id": intent_id}},
+            "data": {"object": {"id": intent_id, "metadata": metadata or {}}},
         }
     ).encode()
     t = t or int(time.time())
@@ -438,3 +442,47 @@ async def test_public_event_shows_availability_and_free_spaces(
     zones = {z["zone_code"]: z for z in detail["zones"]}
     assert zones["A"]["available"] == 4 and zones["VIP"]["available"] == 4 and zones["VIP"]["has_spaces"]
     assert "VIP-02" not in [s["label"] for s in spaces] and len(spaces) == 4
+
+
+async def test_webhook_that_beats_our_commit_is_matched_by_booking_id(
+    client: AsyncClient, db: async_sessionmaker[AsyncSession], fakepay: respx.MockRouter, auth_headers: HeadersFactory
+) -> None:
+    """Phase 9 race: the provider's webhook arrives before we stored the intent id on the payment."""
+    world = await build_world(db)
+    _intents(fakepay)
+    driver = await auth_headers(Role.DRIVER)
+    booking = (await _book(client, driver, world)).json()
+    async with db() as session, session.begin():  # rewind to "create_intent returned, provider_ref not saved yet"
+        await session.execute(
+            update(Payment).where(Payment.booking_id == uuid.UUID(booking["id"])).values(provider_ref=None)
+        )
+
+    payload, headers = _webhook("pi_0", metadata={"booking_id": booking["id"]})
+    hook = await client.post("/webhooks/fakepay", content=payload, headers=headers)
+
+    assert hook.json() == {"result": "processed"}
+    assert (await client.get(f"/public/v1/bookings/{booking['id']}", headers=driver)).json()["status"] == "CONFIRMED"
+
+
+async def test_unknown_intent_is_retryable_and_not_recorded(
+    client: AsyncClient, db: async_sessionmaker[AsyncSession], fakepay: respx.MockRouter, auth_headers: HeadersFactory
+) -> None:
+    """503 + nothing stored: the provider's retry of the SAME event is processed, not dropped as a duplicate."""
+    world = await build_world(db)
+    _intents(fakepay)
+    driver = await auth_headers(Role.DRIVER)
+    booking = (await _book(client, driver, world)).json()
+    async with db() as session, session.begin():
+        await session.execute(
+            update(Payment).where(Payment.booking_id == uuid.UUID(booking["id"])).values(provider_ref=None)
+        )
+    early, headers = _webhook("pi_0", event_id="evt_retry")
+    first = await client.post("/webhooks/fakepay", content=early, headers=headers)
+    assert first.status_code == 503 and first.json()["code"] == "UNKNOWN_INTENT"
+
+    async with db() as session, session.begin():  # our commit lands
+        await session.execute(
+            update(Payment).where(Payment.booking_id == uuid.UUID(booking["id"])).values(provider_ref="pi_0")
+        )
+    retry = await client.post("/webhooks/fakepay", content=early, headers=_webhook("pi_0", event_id="evt_retry")[1])
+    assert retry.json() == {"result": "processed"}

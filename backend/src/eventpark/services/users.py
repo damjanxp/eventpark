@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from eventpark.core.errors import Conflict, NotFound
-from eventpark.core.security import hash_password
+from eventpark.core.security import hash_password_async
 from eventpark.db.models import RefreshToken, User
 from eventpark.db.pagination import paginate
 from eventpark.domain.roles import Role
@@ -35,8 +35,9 @@ async def get_user(session: AsyncSession, user_id: uuid.UUID) -> User:
 async def create_user(
     session: AsyncSession, *, actor: uuid.UUID, email: str, password: str, full_name: str, role: Role
 ) -> User:
+    password_hash = await hash_password_async(password)  # slow on purpose: off the event loop, before the tx
     async with session.begin():
-        user = User(email=email, password_hash=hash_password(password), full_name=full_name, role=role)
+        user = User(email=email, password_hash=password_hash, full_name=full_name, role=role)
         session.add(user)
         try:
             await session.flush()
@@ -83,7 +84,7 @@ async def update_user(
             user.is_active = is_active
             changes["is_active"] = is_active
         if password is not None:
-            user.password_hash = hash_password(password)
+            user.password_hash = await hash_password_async(password)
             changes["password"] = "changed"  # noqa: S105 (a marker, never the value)
 
         # Deactivation, role change or new password: end all sessions, so the change takes effect within one

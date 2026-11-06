@@ -4,6 +4,7 @@ Pure functions, no database: the auth service (next step) stores and looks thing
 cryptography. Time is passed in (`now`) instead of read from the clock, so tests can control it.
 """
 
+import asyncio
 import hashlib
 import hmac
 import secrets
@@ -37,6 +38,23 @@ def verify_password(password_hash: str, password: str) -> bool:
         return _password_hasher.verify(password_hash, password)
     except (VerificationError, InvalidHashError):
         return False
+
+
+# argon2 is deliberately slow CPU work (~tens of ms, 64 MiB each). Called directly from async code it would freeze the
+# whole event loop, so every other request in this process (gate decisions included!) waits while a driver logs in.
+# The Phase 9 presale measured exactly that: a trivial /healthz waited up to 1.7 s. So: run it in a worker thread
+# (argon2-cffi releases the GIL, threads really run in parallel) and cap how many run at once, to bound CPU and memory.
+_HASH_SLOTS = asyncio.Semaphore(4)
+
+
+async def hash_password_async(password: str) -> str:
+    async with _HASH_SLOTS:
+        return await asyncio.to_thread(hash_password, password)
+
+
+async def verify_password_async(password_hash: str, password: str) -> bool:
+    async with _HASH_SLOTS:
+        return await asyncio.to_thread(verify_password, password_hash, password)
 
 
 def password_needs_rehash(password_hash: str) -> bool:

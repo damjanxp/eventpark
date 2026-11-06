@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     # The Dsn types check the format (scheme, host, port) at startup too.
     database_url: PostgresDsn  # postgresql+asyncpg://user:password@host:5432/dbname
     redis_url: RedisDsn  # redis://host:6379/0   (rediss:// = TLS, used on AWS)
+    # Connection pool per process (db/engine.py). SQLAlchemy's defaults are 5 + 10.
+    db_pool_size: int = Field(default=5, ge=1)
+    db_max_overflow: int = Field(default=10, ge=0)
+    db_pool_timeout_seconds: float = Field(default=10, gt=0)
     # Fail fast when Redis is slow/gone (cache/client.py, ADR-027): per-call timeout and circuit-breaker cooldown.
     redis_timeout_seconds: float = Field(default=0.25, gt=0)
     redis_breaker_seconds: float = Field(default=5.0, ge=0)
