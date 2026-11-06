@@ -15,6 +15,7 @@ from httpx import AsyncClient
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from eventpark.core.config import Settings
 from eventpark.core.webhooks import expected_signature
 from eventpark.db.models import Booking, EventZone, OutboxMessage, Payment, Ticket
 from eventpark.domain.roles import Role
@@ -486,3 +487,24 @@ async def test_unknown_intent_is_retryable_and_not_recorded(
         )
     retry = await client.post("/webhooks/fakepay", content=early, headers=_webhook("pi_0", event_id="evt_retry")[1])
     assert retry.json() == {"result": "processed"}
+
+
+async def test_locked_reads_never_return_stale_cached_objects(
+    db: async_sessionmaker[AsyncSession], settings: Settings
+) -> None:
+    """Phase 9 chaos bug: with expire_on_commit=False a SELECT ... FOR UPDATE returned a cached object."""
+    from eventpark.db.session import create_sessionmaker
+
+    world = await build_world(db)
+    sessions = create_sessionmaker(db.kw["bind"])
+    async with sessions() as mine:
+        async with mine.begin():
+            ez = await mine.get(EventZone, world.zone_ids["A"])  # now cached in `mine`
+            assert ez is not None and ez.drive_up_occupied == 0
+        async with db() as other, other.begin():  # someone else commits a change
+            await other.execute(
+                update(EventZone).where(EventZone.id == world.zone_ids["A"]).values(drive_up_occupied=3)
+            )
+        async with mine.begin():
+            locked = await mine.scalar(select(EventZone).where(EventZone.id == world.zone_ids["A"]).with_for_update())
+            assert locked is not None and locked.drive_up_occupied == 3  # fresh, not the cached 0

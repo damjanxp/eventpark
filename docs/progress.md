@@ -1,6 +1,6 @@
 # Progress
 
-**Active phase:** Phase 8 — Frontend
+**Active phase:** Phase 10 — AWS foundations (bootstrap written, not applied)
 **AWS dev environment:** ⛔ down   *(update whenever you run aws-up / aws-down)*
 
 | # | Phase | Est. days | Status | Journal | Notes |
@@ -13,9 +13,9 @@
 | 5 | Payments & booking | 2 | ✅ | | journal + checkpoint deferred |
 | 6 | Outbox, SQS, workers, S3 | 2.5 | ✅ | | experiments: [phase-06](experiments/phase-06-async.md); journal + checkpoint deferred |
 | 7 | Redis: cache, read model, rate limit, realtime | 1.5 | ✅ | | experiments: [phase-07](experiments/phase-07-redis.md); ADR-026/027; journal + checkpoint deferred |
-| 8 | Frontend | 3 | ⬜ | | |
-| 9 | Simulator & local experiments | 1.5 | ⬜ | | |
-| 10 | AWS foundations: Terraform, IAM, ECR | 1 | ⬜ | | |
+| 8 | Frontend | 3 | ✅ | | operations API (ADR-028), ADR-029; journal + checkpoint deferred |
+| 9 | Simulator & local experiments | 1.5 | ✅ | | experiments: [local-phase-09](experiments/local-phase-09.md); ADR-030; stress-10k + fair-saturday not run yet |
+| 10 | AWS foundations: Terraform, IAM, ECR | 1 | 🟨 | | infra/bootstrap written + validated, NOT applied (needs aws login + go-ahead); infra/modules/network started |
 | 11 | Network & data layer on AWS | 1.5 | ⬜ | | |
 | 12 | ECS, ALB, CloudFront | 2.5 | ⬜ | | |
 | 13 | CI/CD | 1 | ⬜ | | |
@@ -71,6 +71,13 @@ Status: ⬜ not started · 🟨 in progress · ✅ done · ✂️ cut (see cut l
   `make demo-scale` (update crosses instances in 162 ms), experiments: Redis stop made gates take 2–4 s → short
   timeouts + circuit breaker (ADR-027, now ~30 ms) — Damjan: agent also implements YOU WRITE tasks for now, journals
   deferred — AWS: nothing running
+- 2026-11-06 (cont.) — Phase 8: operations API (manual open, void, lost ticket, inside, passages, gate activity,
+  hourly stats, lookup), React app (dashboard, operator, setup, booking) with live WebSocket updates, typed client + CI
+  check. Phase 9: simulator (gatectl lanes, chaos, bookings, invariants, reports), smoke in CI; found + fixed argon2
+  blocking the event loop, webhook-before-commit race, stale objects under FOR UPDATE (ADR-030); Redis vs Postgres
+  admission experiment. Phase 10: bootstrap Terraform validated, not applied — AWS: nothing running.
+  **NEXT:** run stress-10k + fair-saturday; Damjan: `aws login`, review bootstrap plan, go-ahead to apply; finish
+  infra modules (database, cache, queues, storage) + envs/dev; journals/checkpoints 1-9 still deferred.
 
 ## Spending log
 <!-- Monday check of Cost Explorer: date — month-to-date cost (before credits) — credits left -->

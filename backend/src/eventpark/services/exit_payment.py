@@ -156,9 +156,20 @@ async def record_exit_payment(
         peek = (
             await session.execute(select(Payment.ticket_id, Payment.passage_id).where(Payment.id == payment_id))
         ).one()
-        ticket = await session.scalar(select(Ticket).where(Ticket.id == peek.ticket_id).with_for_update())
-        passage = await session.scalar(select(Passage).where(Passage.id == peek.passage_id).with_for_update())
-        payment = await session.scalar(select(Payment).where(Payment.id == payment_id).with_for_update())
+        # populate_existing: this session may still hold these objects from exit_pay's first transaction (the
+        # session doesn't expire them on commit). Without it, SELECT ... FOR UPDATE waits for the lock correctly but
+        # then returns the CACHED object, e.g. status PENDING although a concurrent retry already committed
+        # SUCCEEDED, so both would apply the effects (found by the Phase 9 chaos run: revenue counted twice).
+        fresh = {"populate_existing": True}
+        ticket = await session.scalar(
+            select(Ticket).where(Ticket.id == peek.ticket_id).with_for_update().execution_options(**fresh)
+        )
+        passage = await session.scalar(
+            select(Passage).where(Passage.id == peek.passage_id).with_for_update().execution_options(**fresh)
+        )
+        payment = await session.scalar(
+            select(Payment).where(Payment.id == payment_id).with_for_update().execution_options(**fresh)
+        )
         if ticket is None or passage is None or payment is None:  # pragma: no cover (FKs)
             raise NotFound("Payment not found.", code="PAYMENT_NOT_FOUND")
 

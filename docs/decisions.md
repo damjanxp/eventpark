@@ -263,3 +263,17 @@ number. Superseded decisions stay, marked *Superseded by ADR-xxx*. When you wond
   API domain (CORS, and the `SameSite=Strict` cookie would no longer be same-site).
 - **Consequences:** one origin, no CORS, refresh cookie works as designed. Six path behaviours instead of four in
   Phase 12. `make openapi` + a CI check keep the typed client in sync with the routes.
+
+### ADR-030 — Locking reads always refresh the session's objects (`populate_existing`)
+- **Context:** sessions use `expire_on_commit=False` (objects stay readable after commit, needed in async code). The
+  Phase 9 chaos run showed the cost: a use case with two transactions on one session (exit pay: PENDING → provider →
+  record) re-selected the payment `FOR UPDATE`; the lock waited correctly for a concurrent retry, but SQLAlchemy
+  returned the object cached from the first transaction, so the "already succeeded?" check saw stale data and
+  revenue was counted twice.
+- **Decision:** a `do_orm_execute` listener on `Session` adds `populate_existing=True` to every ORM select with
+  `FOR UPDATE`. Rule: a row you just locked is always read from the database.
+- **Alternatives:** `expire_on_commit=True` (breaks returning objects after commit in async code); adding the option at
+  each of the ~22 call sites (easy to forget in the next one); `session.refresh(obj, with_for_update=True)` (same).
+- **Consequences:** locking selects overwrite in-memory changes to those objects that weren't flushed: don't modify an
+  object and then re-lock it in the same transaction before flushing (we never do). Regression test in
+  `test_payments.py`.
