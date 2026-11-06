@@ -1,0 +1,16 @@
+# Damjan's scenario (YOU WRITE, drafted by the agent; replace with a real event from work):
+# a Saturday at the Belgrade fair. No rush hour: visitors trickle in for 4 hours, most stay 1-2 hours, almost
+# nobody pre-books, everyone pays at the exit, some cards are declined, two exit lanes for the whole day.
+name: fair-saturday
+zones:
+  A: { capacity: 400, prebook_quota: 20, priority: 1 }
+  B: { capacity: 250, prebook_quota: 0, priority: 2 }
+entry_gates: 3
+exit_gates: 2
+arrivals: { vehicles: 600, window_minutes: 240 }
+mix: { prebooked: 0.03 }
+stay_minutes: { mean: 90, stddev: 30 }
+lane_seconds: 10
+time_scale: 120
+pricing: { free_minutes: 0, hourly_minor: 20000 }
+payments: { decline_rate: 0.08, slow_rate: 0.01 }

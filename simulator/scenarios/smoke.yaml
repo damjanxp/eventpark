@@ -1,0 +1,15 @@
+# Quick end-to-end check (also run in CI): a few cars in and out, some pre-booked, some paying, a few dropped answers.
+name: smoke
+zones:
+  A: { capacity: 40, prebook_quota: 10, priority: 1 }
+  B: { capacity: 20, prebook_quota: 0, priority: 2 }
+entry_gates: 2
+exit_gates: 1
+arrivals: { vehicles: 50, window_minutes: 5 }
+mix: { prebooked: 0.2 }
+stay_minutes: { mean: 10, stddev: 3 }
+lane_seconds: 8
+time_scale: 60
+pricing: { free_minutes: 0, hourly_minor: 30000 }   # every drive-up pays at the exit
+payments: { decline_rate: 0.1 }
+chaos: { drop_response_rate: 0.05 }

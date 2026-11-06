@@ -43,6 +43,10 @@ strict = true
 packages = ["simulator"]
 mypy_path = "src"
 
+[[tool.mypy.overrides]]
+module = ["asyncpg", "asyncpg.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

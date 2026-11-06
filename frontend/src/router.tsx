@@ -1,3 +1,4 @@
+/* oxlint-disable react/only-export-components -- route table, not a hot-reloaded component module */
 import { lazy, Suspense } from 'react'
 import { createBrowserRouter, Navigate } from 'react-router'
 import { driverAuth, staffAuth } from './api/auth'

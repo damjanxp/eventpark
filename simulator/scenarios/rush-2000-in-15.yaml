@@ -1,0 +1,14 @@
+# The design target (docs/01): 2,000 cars in the 15 minutes before a concert, 30 % pre-booked.
+name: rush-2000-in-15
+zones:
+  A: { capacity: 1200, prebook_quota: 300, priority: 1 }
+  B: { capacity: 800, prebook_quota: 200, priority: 2 }
+  VIP: { capacity: 50, prebook_quota: 50, priority: 0, price_minor: 250000 }
+entry_gates: 6
+exit_gates: 3
+arrivals: { vehicles: 2000, window_minutes: 15 }
+mix: { prebooked: 0.3 }
+stay_minutes: { mean: 180, stddev: 30 }
+lane_seconds: 8
+time_scale: 60
+booking_concurrency: 25

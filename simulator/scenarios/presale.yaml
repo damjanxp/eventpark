@@ -1,0 +1,8 @@
+# Tickets go on sale: 600 drivers try to book 500 places at once. Nobody may get a place that doesn't exist.
+name: presale
+presale_only: true
+zones:
+  A: { capacity: 1200, prebook_quota: 300, priority: 1 }
+  B: { capacity: 800, prebook_quota: 200, priority: 2 }
+arrivals: { vehicles: 600 }
+booking_concurrency: 60

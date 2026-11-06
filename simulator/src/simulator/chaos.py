@@ -50,5 +50,5 @@ def run_action(action: dict[str, str | int]) -> str:
         cmd = ["docker", "compose", "start", str(action["start"])]
     else:
         return f"unknown chaos action {action}"
-    result = subprocess.run(cmd, capture_output=True, text=True, check=False)  # noqa: S603 (fixed argv)
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     return f"{' '.join(cmd[2:])} -> exit {result.returncode}"

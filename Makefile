@@ -2,7 +2,7 @@
 # Each target is just the command(s) you'd otherwise type; read them to learn what really runs.
 
 .DEFAULT_GOAL := help
-.PHONY: help up up-scale demo-scale web openapi down reset logs ps migrate seed lane test test-fast lint fmt smoke
+.PHONY: help up up-scale demo-scale web openapi sim down reset logs ps migrate seed lane test test-fast lint fmt smoke
 
 BACKEND := cd backend &&
 # Host-side tools (alembic, smoke script) read the same .env as Compose; its URLs point at localhost.
@@ -52,10 +52,15 @@ openapi: ## Regenerate the frontend's typed API client after changing the API
 	$(BACKEND) uv run python -m eventpark.openapi_dump ../frontend/openapi.json
 	cd frontend && npm run gen:api
 
+SCENARIO ?= smoke
+sim: .env ## Run a traffic scenario + invariant checks: make sim SCENARIO=rush-2000-in-15 (after make seed)
+	cd simulator && uv run --env-file ../.env python -m simulator run scenarios/$(SCENARIO).yaml
+
 test: ## All tests: backend (integration tests start containers: needs Docker) + gate controller
 	$(BACKEND) uv run pytest
 	cd gate-controller && uv run pytest
 	cd fakepay && uv run pytest
+	cd simulator && uv run pytest
 	cd frontend && npm test
 
 test-fast: ## Backend tests that need no Docker
@@ -66,6 +71,7 @@ lint: ## The same checks as CI: lint, formatting, types
 	uvx ruff check scripts && uvx ruff format --check scripts
 	cd gate-controller && uv run ruff check . && uv run ruff format --check . && uv run mypy
 	cd fakepay && uv run ruff check . && uv run ruff format --check . && uv run mypy
+	cd simulator && uv run ruff check . && uv run ruff format --check . && uv run mypy
 	cd frontend && npm run typecheck && npm run lint
 
 fmt: ## Auto-fix lint issues and format the code

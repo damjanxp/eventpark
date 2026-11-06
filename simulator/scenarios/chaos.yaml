@@ -1,0 +1,24 @@
+# Things go wrong during traffic: answers get lost, the network is slow, Redis is flushed and then stopped, a worker
+# and the outbox relay restart. Gates must keep working and every invariant must still hold once things settle.
+name: chaos
+zones:
+  A: { capacity: 200, prebook_quota: 40, priority: 1 }
+  B: { capacity: 100, prebook_quota: 0, priority: 2 }
+entry_gates: 3
+exit_gates: 2
+arrivals: { vehicles: 300, window_minutes: 30 }
+mix: { prebooked: 0.1 }
+stay_minutes: { mean: 20, stddev: 5 }
+lane_seconds: 8
+time_scale: 60
+pricing: { free_minutes: 0, hourly_minor: 30000 }
+payments: { decline_rate: 0.1, slow_rate: 0.03 }
+chaos:
+  drop_response_rate: 0.15
+  extra_latency_ms: 30
+  actions:
+    - { at_seconds: 5, do: flush_redis }
+    - { at_seconds: 10, restart: worker-entry }
+    - { at_seconds: 15, restart: outbox-relay }
+    - { at_seconds: 20, stop: valkey }
+    - { at_seconds: 32, start: valkey }

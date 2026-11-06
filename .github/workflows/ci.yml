@@ -4,7 +4,8 @@
 # Jobs run in parallel on separate runners:
 #   backend: lint + formatting + types + all tests (integration tests start real Postgres/Valkey via Docker)
 #   frontend: typed client up to date, tsc, oxlint, vitest, vite build
-#   stack:   "fresh clone" test: make up -> /readyz -> smoke test of the S3/SQS emulators
+#   simulator: lint + types + unit tests
+#   stack:   "fresh clone" test: make up -> /readyz -> S3/SQS emulator smoke -> simulator smoke scenario
 
 name: ci
 
@@ -138,6 +139,29 @@ jobs:
       - name: Production build
         run: npm run build
 
+  simulator:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: simulator
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.3.2
+        with:
+          version: "0.12.23"
+          enable-cache: true
+
+      - name: Install dependencies (exactly as locked)
+        run: uv sync --locked
+
+      - name: Lint, format, types (mypy strict)
+        run: uv run ruff check . && uv run ruff format --check . && uv run mypy
+
+      - name: Tests (pure parts; the full run happens in the stack job)
+        run: uv run pytest
+
   stack:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -156,6 +180,13 @@ jobs:
 
       - name: AWS emulators behave like S3/SQS
         run: make smoke
+
+      - name: Simulator smoke scenario (50 cars, dropped answers) + invariants
+        run: make seed && make sim SCENARIO=smoke
+
+      - name: Simulator report
+        if: always()
+        run: cat simulator/reports/*.md 2>/dev/null >> "$GITHUB_STEP_SUMMARY" || true
 
       - name: Logs (only if something failed)
         if: failure()

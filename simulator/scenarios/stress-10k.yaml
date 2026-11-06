@@ -1,0 +1,12 @@
+# Far beyond the design: 10,000 cars in 10 minutes for 8,000 places. Entry only. 2,000 must be turned away cleanly
+# (CAR_PARK_FULL), and capacity must hold under the concurrent load.
+name: stress-10k
+zones:
+  A: { capacity: 5000, prebook_quota: 0, priority: 1 }
+  B: { capacity: 3000, prebook_quota: 0, priority: 2 }
+entry_gates: 12
+exit_gates: 0
+arrivals: { vehicles: 10000, window_minutes: 10 }
+lane_seconds: 4
+time_scale: 60
+leave: false
