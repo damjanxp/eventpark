@@ -1,0 +1,2 @@
+# cp terraform.tfvars.example terraform.tfvars   (terraform.tfvars is gitignored: your email is personal)
+alarm_email = "you@example.com"

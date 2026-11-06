@@ -24,6 +24,8 @@ frontend/dist/
 *.tfstate
 *.tfstate.*
 *.tfplan
+*.plan
+terraform.tfvars
 crash.log
 
 # Editors / OS
@@ -31,3 +33,4 @@ crash.log
 .DS_Store
 Thumbs.db
 .devices.local.json
+

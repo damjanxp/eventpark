@@ -121,8 +121,8 @@ How to work with him:
 │   └── tests/                 # unit / integration / concurrency
 ├── gate-controller/           # Python edge-device service (the "Raspberry Pi"): package gatectl
 ├── fakepay/                   # simulated payment provider (FastAPI): intents, checkout, signed webhooks, terminal
-├── simulator/                 # traffic simulator + invariant checker
-├── frontend/                  # React + TS + Vite: dashboard, operator console, booking site
+├── simulator/                 # traffic simulator (lanes via gatectl, chaos, bookings) + invariant checker + reports
+├── frontend/                  # React + TS + Vite: dashboard, operator console, setup, booking site (README inside)
 ├── infra/
 │   ├── bootstrap/             # one-time: state bucket, ECR, OIDC, budgets
 │   ├── modules/               # network, database, cache, queues, storage, ecs-service, alb, cdn, observability
@@ -175,9 +175,12 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy src
 uv run --env-file ../.env alembic upgrade head          # (init service does this on `make up`)
 uv run --env-file ../.env alembic revision --autogenerate -m "..."   # draft a migration, then REVIEW it
 # frontend
-cd frontend && npm ci && npm run dev
-# simulator
-cd simulator && uv run python -m simulator run scenarios/rush.yaml
+make web                        # npm install + Vite on :5173 (proxies /admin/v1, /public/v1, /ws/v1 to :8000)
+cd frontend && npm test && npm run typecheck && npm run lint
+make openapi                    # after an API change: regenerate frontend/openapi.json + src/api/schema.d.ts
+# simulator (stack running, after make seed)
+make sim SCENARIO=smoke         # or rush-2000-in-15, presale, stress-10k, chaos, fair-saturday -> simulator/reports/
+cd simulator && uv run --env-file ../.env python -m simulator check <event_id>   # invariants only
 # infra
 cd infra/envs/dev && terraform init && terraform plan
 ```
