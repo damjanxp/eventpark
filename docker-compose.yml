@@ -176,6 +176,42 @@ services:
       valkey:
         condition: service_healthy
 
+  # --- `scale` profile: a second API instance + a load balancer (Phase 7: prove pub/sub fan-out) ---
+  #   docker compose --profile scale up -d --wait     ->  http://localhost:8080 (Caddy, round-robin over api + api-2)
+  #   api stays reachable directly on :8000, api-2 on :8001, so you can choose which instance you talk to.
+  api-2:
+    profiles: [scale]
+    image: eventpark-backend:local
+    command: ["uvicorn", "eventpark.app:create_app", "--factory", "--host=0.0.0.0", "--port=8000"]
+    environment:
+      <<: *backend-env
+      SERVICE_NAME: api-2
+    volumes:
+      - ./backend/src:/app/src:ro
+    ports:
+      - "127.0.0.1:8001:8000"
+    depends_on:
+      api:
+        condition: service_healthy  # api builds the image and waits for init; api-2 just reuses both
+
+  lb:
+    profiles: [scale]
+    image: caddy:2.10-alpine
+    volumes:
+      - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    depends_on:
+      api:
+        condition: service_healthy
+      api-2:
+        condition: service_healthy
+
   fakepay:
     # Simulated payment provider (docs/02-architecture.md §11). Checkout page: http://localhost:8100/checkout/<id>
     build: ./fakepay

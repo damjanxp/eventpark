@@ -2,7 +2,7 @@
 # Each target is just the command(s) you'd otherwise type; read them to learn what really runs.
 
 .DEFAULT_GOAL := help
-.PHONY: help up down reset logs ps migrate seed lane test test-fast lint fmt smoke
+.PHONY: help up up-scale demo-scale down reset logs ps migrate seed lane test test-fast lint fmt smoke
 
 BACKEND := cd backend &&
 # Host-side tools (alembic, smoke script) read the same .env as Compose; its URLs point at localhost.
@@ -17,11 +17,17 @@ help: ## List the targets
 up: .env ## Build and start the whole local stack, wait until everything is healthy
 	docker compose up -d --build --wait
 
+up-scale: .env ## Like `up`, plus a 2nd API instance (:8001) and a Caddy load balancer (:8080)
+	docker compose --profile scale up -d --build --wait
+
+demo-scale: ## After up-scale + seed: prove a socket on instance A gets updates caused via instance B
+	uv run scripts/demo_two_instances.py
+
 down: ## Stop the stack (data in volumes is kept)
-	docker compose down
+	docker compose --profile scale down
 
 reset: ## Stop the stack AND delete its volumes (all local data is gone)
-	docker compose down -v
+	docker compose --profile scale down -v
 
 logs: ## Follow the logs of all services (Ctrl+C to stop)
 	docker compose logs -f

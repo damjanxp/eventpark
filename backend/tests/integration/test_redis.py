@@ -99,6 +99,27 @@ async def test_rate_limiter_fails_open_and_gates_work_without_redis(
     assert ticket.status_code == 401  # (no token: auth comes first; with a token it would be 503 REALTIME_UNAVAILABLE)
 
 
+async def test_gates_stay_fast_when_redis_hangs(db: async_sessionmaker[AsyncSession], settings: Settings) -> None:
+    """Redis unreachable (connect hangs, like a stopped container): the breaker keeps gate decisions fast.
+
+    Before ADR-027 each decision waited for two 2 s timeouts (experiment: 2-4 s per car).
+    """
+    world = await build_world(db)
+    hanging = settings.model_copy(
+        update={"redis_url": "redis://10.255.255.1:6379/0", "redis_timeout_seconds": 0.2, "redis_breaker_seconds": 30}
+    )
+    timings = []
+    async for client in _client_for(create_app(hanging)):
+        for _ in range(5):
+            start = asyncio.get_running_loop().time()
+            issued = await client.post(
+                "/gate/v1/entry/issue", json={"request_id": str(uuid.uuid4())}, headers=world.headers("N1")
+            )
+            timings.append(asyncio.get_running_loop().time() - start)
+            assert issued.status_code == 200 and issued.json()["decision"] == "OPEN"
+    assert max(timings[1:]) < 0.15, timings  # only the very first request may pay the timeout
+
+
 # --- cache-aside ---
 
 
@@ -202,7 +223,12 @@ async def test_update_reaches_sockets_on_every_api_instance(
     ready_a, ready_b = asyncio.Event(), asyncio.Event()
     tasks = [asyncio.create_task(dashboard("A", ready_a)), asyncio.create_task(dashboard("B", ready_b))]
     await asyncio.wait_for(asyncio.gather(ready_a.wait(), ready_b.wait()), timeout=10)
-    await asyncio.sleep(0.3)  # both subscribers are listening
+    # Pub/sub is fire-and-forget: publish only once both instances' subscribers are really registered in Redis.
+    for _ in range(100):
+        clients = await redis.client_list()
+        if sum(1 for c in clients if c.get("psub") == "1") >= 2:  # (PUBSUB NUMPAT counts patterns, not clients)
+            break
+        await asyncio.sleep(0.05)
 
     await pubsub.publish(redis, world.event_id, {"type": "passage", "event": "passage.completed", "gate_code": "N1"})
     await asyncio.wait_for(asyncio.gather(*tasks), timeout=10)

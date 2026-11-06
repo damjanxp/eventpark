@@ -22,7 +22,7 @@ from eventpark.api.admin import venues as admin_venues
 from eventpark.api.auth import admin_auth_router, public_auth_router
 from eventpark.api.errors import install_error_handlers
 from eventpark.api.middleware import RequestIdMiddleware
-from eventpark.cache.client import create_redis
+from eventpark.cache.client import create_pubsub_redis, create_redis
 from eventpark.cache.pubsub import ConnectionManager, subscriber_loop
 from eventpark.cache.rate_limit import RateLimiter
 from eventpark.core.config import Settings, get_settings
@@ -49,7 +49,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.connections = ConnectionManager()
         # Every instance subscribes to realtime updates and forwards them to its own WebSockets (cache/pubsub.py).
         stop_subscriber = asyncio.Event()
-        subscriber = asyncio.create_task(subscriber_loop(app.state.redis, app.state.connections, stop=stop_subscriber))
+        app.state.pubsub_redis = create_pubsub_redis(settings)
+        subscriber = asyncio.create_task(
+            subscriber_loop(app.state.pubsub_redis, app.state.connections, stop=stop_subscriber)
+        )
         app.state.storage = Storage(settings)
         app.state.provider = PaymentProvider(settings.fakepay_url, terminal_timeout=settings.terminal_timeout_seconds)
         log.info("app.started")
@@ -61,6 +64,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await subscriber
         await app.state.provider.aclose()
         await app.state.redis.aclose()
+        await app.state.pubsub_redis.aclose()
         await app.state.engine.dispose()
         log.info("app.stopped")
 

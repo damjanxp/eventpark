@@ -161,6 +161,7 @@ make lint                       # what CI checks: ruff, ruff format, mypy
 make smoke                      # check the S3/SQS emulators (stack running)
 docker compose logs -f worker-entry outbox-relay   # watch the async side
 make lane GATE=N1               # drive one lane by keyboard (entry N1..S2, exit X1..X3), after make seed
+make up-scale && make demo-scale  # 2 API instances behind Caddy (:8080); live update crosses instances
 make seed                       # demo venue/users/events; device keys -> .devices.local.json (password: eventpark-demo-pass)
 # local stack
 docker compose up -d            # start infra + services

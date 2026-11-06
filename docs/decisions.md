@@ -212,3 +212,20 @@ number. Superseded decisions stay, marked *Superseded by ADR-xxx*. When you wond
 - **Consequences:** the same command becomes the ECS container `healthCheck` in Phase 12, so ECS replaces stuck worker
   tasks. Compose only marks them unhealthy (no restart). A single handler call that blocks longer than the max age
   without extending visibility is reported as unhealthy — intended.
+
+### ADR-027 — Redis client: short timeouts + circuit breaker
+- **Context:** the Phase 7 "stop Redis" experiment: gates still opened (fail-open works), but every decision took
+  2–4 s — the rate limiter and the config cache each waited for a 2 s connect timeout. The gate controller times out
+  at ~2 s and retries, so in a real outage the lanes would effectively stall. Failing *open* is not enough; it must
+  fail *fast*.
+- **Decision:** `cache/client.py` returns a `BreakerRedis` (subclass of `redis.asyncio.Redis`). Timeouts are
+  `REDIS_TIMEOUT_SECONDS` (0.25 s; a healthy Redis answers in < 1 ms). After a connection error or timeout the breaker
+  opens for `REDIS_BREAKER_SECONDS` (5 s): commands raise `ConnectionError` immediately, without touching the network.
+  The first call after the cooldown tries again; success closes it. Logged as `redis.circuit_open` with
+  `metric=RedisFallbacks` (alarm in Phase 14).
+- **Alternatives:** only shorter timeouts (still 0.25 s × calls on *every* request during an outage); a library
+  (pybreaker/aiobreaker: one more dependency for ~20 lines); health-check task flipping a flag (lags behind, extra
+  moving part).
+- **Consequences:** measured with Redis stopped: first car ~450 ms, then ~30 ms (normal ~24 ms). Up to 5 s after
+  Redis comes back we still skip it (cache misses go to Postgres; limiter open) — harmless. Pipelines and pub/sub
+  bypass `execute_command`; the subscriber has its own reconnect backoff.

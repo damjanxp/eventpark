@@ -1,6 +1,6 @@
 # Progress
 
-**Active phase:** Phase 7 — Redis: cache, read model, rate limit, realtime
+**Active phase:** Phase 8 — Frontend
 **AWS dev environment:** ⛔ down   *(update whenever you run aws-up / aws-down)*
 
 | # | Phase | Est. days | Status | Journal | Notes |
@@ -12,7 +12,7 @@
 | 4 | Gate controller (the Pi) | 1.5 | ✅ | | experiments: [phase-04](experiments/phase-04-gate-controller.md); journal + checkpoint deferred |
 | 5 | Payments & booking | 2 | ✅ | | journal + checkpoint deferred |
 | 6 | Outbox, SQS, workers, S3 | 2.5 | ✅ | | experiments: [phase-06](experiments/phase-06-async.md); journal + checkpoint deferred |
-| 7 | Redis: cache, read model, rate limit, realtime | 1.5 | 🟨 | | code + tests done; TODO: 2 API instances behind Caddy in compose, experiments write-up |
+| 7 | Redis: cache, read model, rate limit, realtime | 1.5 | ✅ | | experiments: [phase-07](experiments/phase-07-redis.md); ADR-026/027; journal + checkpoint deferred |
 | 8 | Frontend | 3 | ⬜ | | |
 | 9 | Simulator & local experiments | 1.5 | ⬜ | | |
 | 10 | AWS foundations: Terraform, IAM, ECR | 1 | ⬜ | | |
@@ -66,6 +66,11 @@ Status: ⬜ not started · 🟨 in progress · ✅ done · ✂️ cut (see cut l
   with 2 API instances behind Caddy + live cross-instance demo, `docs/experiments/phase-07-redis.md`;
   (3) Phase 8 frontend; (4) Phase 9 simulator; (5) Phases 10-15 Terraform/CI/CD written but NOT applied
   (needs Damjan: `aws login` + explicit go-ahead). Journals/checkpoints for phases 1-7 deferred by Damjan.
+- 2026-11-06 — CI red since Phase 6 (Compose v5 `up --wait` rejects containers without a healthcheck) → heartbeat-file
+  liveness for workers/relay/ticker (ADR-026), CI green. Phase 7 finished: `scale` profile (api-2 + Caddy :8080),
+  `make demo-scale` (update crosses instances in 162 ms), experiments: Redis stop made gates take 2–4 s → short
+  timeouts + circuit breaker (ADR-027, now ~30 ms) — Damjan: agent also implements YOU WRITE tasks for now, journals
+  deferred — AWS: nothing running
 
 ## Spending log
 <!-- Monday check of Cost Explorer: date — month-to-date cost (before credits) — credits left -->

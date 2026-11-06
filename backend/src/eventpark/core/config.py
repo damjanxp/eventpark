@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     # The Dsn types check the format (scheme, host, port) at startup too.
     database_url: PostgresDsn  # postgresql+asyncpg://user:password@host:5432/dbname
     redis_url: RedisDsn  # redis://host:6379/0   (rediss:// = TLS, used on AWS)
+    # Fail fast when Redis is slow/gone (cache/client.py, ADR-027): per-call timeout and circuit-breaker cooldown.
+    redis_timeout_seconds: float = Field(default=0.25, gt=0)
+    redis_breaker_seconds: float = Field(default=5.0, ge=0)
 
     # --- auth (docs/02-architecture.md §9) ---
     # Signs access tokens (HS256). SecretStr: printing the settings shows '**********', never the value.

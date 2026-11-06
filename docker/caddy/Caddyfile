@@ -1,0 +1,17 @@
+# Local load balancer for the `scale` profile (docker compose --profile scale up -d): two API instances behind one
+# address, like the ALB on AWS. Round-robin, so consecutive requests land on different instances.
+# WebSockets need nothing special: Caddy proxies the Upgrade handshake and then the open connection.
+{
+	admin off
+	auto_https off
+}
+
+:8080 {
+	reverse_proxy api:8000 api-2:8000 {
+		lb_policy round_robin
+		health_uri /healthz
+		health_interval 5s
+		# Which instance answered (for the demo and for curiosity): look at this response header.
+		header_down X-Upstream {rp.upstream.hostport}
+	}
+}
