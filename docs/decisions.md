@@ -248,3 +248,18 @@ number. Superseded decisions stay, marked *Superseded by ADR-xxx*. When you wond
   passage id; adds a round trip to an emergency action).
 - **Consequences:** manual opens without a ticket can't be tied to a car. A booth payment is trusted (no card
   provider record) — acceptable for a simulation; a real system would charge via the booth's own terminal.
+
+### ADR-029 — Frontend calls the API's real paths on the same origin (no `/api` prefix)
+- **Context:** doc 03 routed `/api/*` from CloudFront to the ALB, but the API's routes are `/admin/v1`, `/public/v1`,
+  `/gate/v1`, `/ws/v1`, `/webhooks`. CloudFront can't strip a path prefix without an extra function, and adding
+  `/api` to every route would change the gate devices' URLs too.
+- **Decision:** the SPA calls the real paths on its own origin. Locally Vite's dev proxy forwards them to the API;
+  on AWS, CloudFront behaviours `/admin/v1/*`, `/public/v1/*`, `/gate/*`, `/webhooks/*`, `/ws/*`, `/fakepay/*` go to
+  the ALB. SPA routes never start with those prefixes (`/dashboard`, `/operator`, `/setup`, `/history`, `/book`).
+  SPA fallback on AWS = a **CloudFront Function** on the default (S3) behaviour that rewrites paths without a file
+  extension to `/index.html` — not "custom error responses 403/404 → index.html", which apply to *every* origin and
+  would turn the API's 404 problem+json into an HTML page.
+- **Alternatives:** an `/api` prefix + path-rewriting CloudFront Function (two places to keep in sync); a separate
+  API domain (CORS, and the `SameSite=Strict` cookie would no longer be same-site).
+- **Consequences:** one origin, no CORS, refresh cookie works as designed. Six path behaviours instead of four in
+  Phase 12. `make openapi` + a CI check keep the typed client in sync with the routes.

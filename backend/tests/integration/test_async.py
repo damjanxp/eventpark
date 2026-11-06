@@ -482,6 +482,9 @@ async def test_maintenance_moves_events_by_the_clock_and_marks_silent_devices_of
         alert = await session.scalar(select(OutboxMessage).where(OutboxMessage.type == "alert.device_offline"))
     assert report.event_transitions == 1 and event is not None and event.status is EventStatus.LIVE
     assert report.devices_offline == 1 and device is not None and device.status.value == "OFFLINE" and alert is not None
+    # The alert carries the venue's live event and the gate code, so it reaches that event's dashboards.
+    assert alert.payload["event_id"] == str(world.event_id)
+    assert alert.payload["data"]["gate_code"] == "N1"
 
 
 async def test_maintenance_reconciles_an_unknown_exit_payment(
@@ -544,3 +547,29 @@ async def test_archiving_expires_unused_passes_and_computes_the_summary(
     assert ticket is not None and ticket.status.value == "EXPIRED"
     assert summary is not None and summary.total_entries == 2 and summary.peak_occupancy == 2
     assert history[0]["event_id"] == str(world.event_id)
+
+
+async def test_staff_alerts_are_pushed_to_the_events_dashboards(
+    db: async_sessionmaker[AsyncSession], settings: Settings
+) -> None:
+    """alert.* messages (printer, device offline) reach dashboards over pub/sub, not only the logs."""
+    published: list[tuple[str, str]] = []
+
+    class FakeRedis:
+        async def publish(self, channel: str, message: str) -> None:
+            published.append((channel, message))
+
+    handler = Notifications(db, settings, mailer=object())  # type: ignore[arg-type]
+    handler._redis = FakeRedis()  # type: ignore[assignment]
+    event_id = uuid.uuid4()
+    msg = _envelope("alert.printer", gate_code="S2", printer_status="PAPER_LOW").model_copy(
+        update={"event_id": event_id}
+    )
+
+    await handler.after_commit(msg)
+    await handler.after_commit(_envelope("alert.printer", gate_code="S2"))  # no event: nowhere to push
+
+    assert len(published) == 1
+    channel, body = published[0]
+    assert channel == f"realtime:event:{event_id}"
+    assert json.loads(body) == {"type": "alert", "alert": "printer", "gate_code": "S2", "printer_status": "PAPER_LOW"}

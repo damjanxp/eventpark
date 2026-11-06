@@ -22,6 +22,7 @@ from eventpark.db.models import (
     Device,
     Event,
     EventZone,
+    Gate,
     OutboxMessage,
     Passage,
     Payment,
@@ -198,10 +199,19 @@ async def mark_devices_offline(sessions: async_sessionmaker[AsyncSession], now: 
             )
         ).all()
         for device_id, gate_id, name in rows:
+            # Attach the venue's LIVE event (if any) so the alert reaches that event's dashboards.
+            gate_code, event_id = (
+                await session.execute(
+                    select(Gate.code, Event.id)
+                    .outerjoin(Event, (Event.venue_id == Gate.venue_id) & (Event.status == EventStatus.LIVE))
+                    .where(Gate.id == gate_id)
+                )
+            ).one()
             outbox.add(
                 session,
                 "alert.device_offline",
-                {"device_id": device_id, "gate_id": gate_id, "device_name": name},
+                {"device_id": device_id, "gate_id": gate_id, "gate_code": gate_code, "device_name": name},
+                event_id=event_id,
                 producer="worker-maintenance",
             )
     return len(rows)

@@ -56,7 +56,7 @@ async def cars_inside(
     return Page(items=[InsideOut(**r.__dict__) for r in rows], next_cursor=next_cursor)
 
 
-class PassageOut(BaseModel):
+class PassageRowOut(BaseModel):
     id: uuid.UUID
     gate_code: str
     direction: GateDirection
@@ -80,12 +80,12 @@ async def list_passages(
     status: PassageStatus | None = None,
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
-) -> Page[PassageOut]:
+) -> Page[PassageRowOut]:
     """Newest first."""
     rows, next_cursor = await ops.passages(
         session, event_id, gate_id=gate_id, status=status, cursor=cursor, limit=limit
     )
-    return Page(items=[PassageOut(**r.__dict__) for r in rows], next_cursor=next_cursor)
+    return Page(items=[PassageRowOut(**r.__dict__) for r in rows], next_cursor=next_cursor)
 
 
 class HourOut(BaseModel):

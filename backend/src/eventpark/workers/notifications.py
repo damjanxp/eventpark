@@ -12,6 +12,7 @@ import structlog
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from eventpark.cache import pubsub
 from eventpark.core.mail import Attachment, Mail, Mailer
 from eventpark.db.models import Booking, Event, EventZone, Ticket, User, Zone
 from eventpark.messaging.schemas import Envelope
@@ -50,9 +51,13 @@ class Notifications(Handler):
         elif msg.type == "booking.expired":
             await self._booking_expired(msg)
         elif msg.type.startswith("alert."):
-            log.warning(
-                "alert", alert=msg.type, **{k: str(v) for k, v in msg.data.items()}
-            )  # Phase 7: live to dashboards
+            log.warning("alert", alert=msg.type, **{k: str(v) for k, v in msg.data.items()})
+
+    async def after_commit(self, msg: Envelope) -> None:
+        """Staff alerts go live to the event's dashboards (fire-and-forget: a missed alert is also in the logs)."""
+        if msg.type.startswith("alert.") and msg.event_id is not None:
+            alert = msg.type.removeprefix("alert.")
+            await pubsub.publish(self.redis, msg.event_id, {"type": "alert", "alert": alert, **msg.data})
 
     async def apply(self, session: AsyncSession, msg: Envelope) -> None:
         if msg.type == "booking.confirmed":

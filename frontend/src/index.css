@@ -1,0 +1,49 @@
+@import 'tailwindcss';
+
+/* Design tokens (light + dark). Components use these names, e.g. bg-surface, text-muted, border-line. */
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --color-canvas: oklch(0.985 0.002 250);
+  --color-surface: oklch(1 0 0);
+  --color-raised: oklch(0.97 0.004 250);
+  --color-ink: oklch(0.22 0.02 260);
+  --color-muted: oklch(0.52 0.02 260);
+  --color-line: oklch(0.91 0.006 260);
+  --color-brand: oklch(0.55 0.17 255);
+  --color-brand-ink: oklch(0.99 0 0);
+  --color-ok: oklch(0.62 0.15 150);
+  --color-warn: oklch(0.75 0.15 75);
+  --color-bad: oklch(0.58 0.2 25);
+  --color-prebook: oklch(0.6 0.13 300);
+  /* chart series: categorical slots 1-2 of the validated reference palette (dataviz skill) */
+  --color-series-1: #2a78d6;
+  --color-series-2: #eb6834;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-canvas: oklch(0.17 0.01 260);
+    --color-surface: oklch(0.21 0.012 260);
+    --color-raised: oklch(0.25 0.012 260);
+    --color-ink: oklch(0.94 0.005 260);
+    --color-muted: oklch(0.7 0.015 260);
+    --color-line: oklch(0.3 0.012 260);
+    --color-brand: oklch(0.68 0.15 255);
+    --color-brand-ink: oklch(0.15 0.01 260);
+    --color-series-1: #3987e5;
+    --color-series-2: #d95926;
+  }
+}
+
+html,
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+}
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+.tabular {
+  font-variant-numeric: tabular-nums;
+}

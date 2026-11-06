@@ -3,6 +3,7 @@
 #
 # Jobs run in parallel on separate runners:
 #   backend: lint + formatting + types + all tests (integration tests start real Postgres/Valkey via Docker)
+#   frontend: typed client up to date, tsc, oxlint, vitest, vite build
 #   stack:   "fresh clone" test: make up -> /readyz -> smoke test of the S3/SQS emulators
 
 name: ci
@@ -96,6 +97,46 @@ jobs:
 
       - name: Tests
         run: uv run pytest
+
+  frontend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: astral-sh/setup-uv@v10.3.2
+        with:
+          version: "0.12.23"
+          enable-cache: true
+
+      - name: Install dependencies (exactly as locked)
+        run: npm ci
+
+      - name: Typed API client is up to date with the backend
+        # Regenerate openapi.json + schema.d.ts from the backend's routes; any difference = someone changed the API
+        # without regenerating, and the frontend may be using fields that no longer exist.
+        run: |
+          (cd ../backend && uv run python -m eventpark.openapi_dump ../frontend/openapi.json)
+          npm run gen:api
+          git diff --exit-code -- openapi.json src/api/schema.d.ts
+
+      - name: Types, lint
+        run: npm run typecheck && npm run lint
+
+      - name: Tests (vitest)
+        run: npm test
+
+      - name: Production build
+        run: npm run build
 
   stack:
     runs-on: ubuntu-24.04

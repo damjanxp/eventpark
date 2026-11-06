@@ -21,7 +21,7 @@ How EventPark runs on AWS, how it's created (Terraform), deployed (GitHub Action
                                       ▼  HTTPS (*.cloudfront.net certificate, free)
                               ┌───────────────┐
                               │  CloudFront   │  /*        → S3 frontend bucket (Origin Access Control)
-                              │               │  /api/* /gate/* /webhooks/* /ws/* /fakepay/* → ALB
+                              │               │  /admin/v1/* /public/v1/* /gate/* /webhooks/* /ws/* /fakepay/* → ALB
                               └───────┬───────┘  (adds secret header X-Origin-Verify)
  ┌──────────────── VPC 10.20.0.0/16 (eu-central-1, 2 AZs) ───────────────────────────────────────┐
  │                                    ▼                                                          │
@@ -134,7 +134,8 @@ Calculator; that's an exercise in Phase 10).
 - **ELI5:** copies of your website stored close to users worldwide, plus a single front door with free HTTPS.
 - **We use:** one distribution, default domain `dxxxx.cloudfront.net` (free TLS certificate; no custom domain needed).
   Behaviours: default → S3 frontend bucket via **Origin Access Control** (bucket stays private) with SPA fallback
-  (403/404 → `/index.html`); `/api/*`, `/gate/*`, `/webhooks/*`, `/ws/*`, `/fakepay/*` → ALB origin, **caching
+  (a CloudFront Function rewrites extension-less paths to `/index.html`, see ADR-029); `/admin/v1/*`, `/public/v1/*`,
+  `/gate/*`, `/webhooks/*`, `/ws/*`, `/fakepay/*` → ALB origin, **caching
   disabled**, all headers/cookies/query strings forwarded, WebSockets supported. Adds the `X-Origin-Verify` header.
   Gate devices also talk to the API through CloudFront, so they get HTTPS for free.
 - **Cost:** always-free tier covers this project. Creation/deletion takes **5–15 min**, the slowest part of `apply`.
