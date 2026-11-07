@@ -15,7 +15,7 @@
 | 7 | Redis: cache, read model, rate limit, realtime | 1.5 | ✅ | | experiments: [phase-07](experiments/phase-07-redis.md); ADR-026/027; journal + checkpoint deferred |
 | 8 | Frontend | 3 | ✅ | | operations API (ADR-028), ADR-029; journal + checkpoint deferred |
 | 9 | Simulator & local experiments | 1.5 | ✅ | | experiments: [local-phase-09](experiments/local-phase-09.md); ADR-030; stress-10k + fair-saturday not run yet |
-| 10 | AWS foundations: Terraform, IAM, ECR | 1 | 🟨 | | infra/bootstrap written + validated, NOT applied (needs aws login + go-ahead); infra/modules/network started |
+| 10 | AWS foundations: Terraform, IAM, ECR | 1 | 🟨 | | infra/bootstrap written + validated, NOT applied (needs aws login + go-ahead); modules network + queues written |
 | 11 | Network & data layer on AWS | 1.5 | ⬜ | | |
 | 12 | ECS, ALB, CloudFront | 2.5 | ⬜ | | |
 | 13 | CI/CD | 1 | ⬜ | | |
